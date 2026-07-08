@@ -56,6 +56,10 @@ Future<void> _initLaunchAtStartup() async {
     appPath: Platform.resolvedExecutable,
     packageName: packageInfo.packageName,
   );
+  // 登錄檔路徑可能因搬移/重裝而失效,每次啟動依設定重寫成目前執行檔路徑
+  if (getIt<SharedPreferences>().getBool(AppConstants.launchAtStartupKey) ?? false) {
+    await launchAtStartup.enable();
+  }
 }
 
 class ZeroTypeApp extends ConsumerWidget {
