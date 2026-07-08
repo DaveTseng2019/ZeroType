@@ -5,8 +5,11 @@ import 'package:ffi/ffi.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zero_type/core/constants/app_constants.dart';
 
-/// 系統音效清單（路徑 → 顯示名稱）
-const Map<String, String> kSystemSoundLabels = {
+/// 系統音效清單（路徑 → 顯示名稱），依平台切換
+final Map<String, String> kSystemSoundLabels =
+    Platform.isWindows ? kWindowsSoundLabels : kMacSoundLabels;
+
+const Map<String, String> kMacSoundLabels = {
   '/System/Library/PrivateFrameworks/SpeechObjects.framework/Versions/A/Frameworks/DictationServices.framework/Versions/A/Resources/DefaultRecognitionSound.aiff':
       '語音輸入',
   '/System/Library/Sounds/Basso.aiff': 'Basso',
@@ -36,6 +39,23 @@ const Map<String, String> kWindowsSounds = {
   kDefaultCancelSound: r'C:\Windows\Media\Speech Misrecognition.wav',
 };
 
+const Map<String, String> kWindowsSoundLabels = {
+  r'C:\Windows\Media\Speech On.wav': '語音開始',
+  r'C:\Windows\Media\Speech Off.wav': '語音結束',
+  r'C:\Windows\Media\Windows Notify.wav': 'Notify',
+  r'C:\Windows\Media\Windows Ding.wav': 'Ding',
+  r'C:\Windows\Media\chimes.wav': 'Chimes',
+  r'C:\Windows\Media\chord.wav': 'Chord',
+  r'C:\Windows\Media\tada.wav': 'Tada',
+  r'C:\Windows\Media\Windows Background.wav': 'Background',
+  r'C:\Windows\Media\Windows Foreground.wav': 'Foreground',
+  r'C:\Windows\Media\Windows Balloon.wav': 'Balloon',
+  r'C:\Windows\Media\Windows Notify System Generic.wav': 'System Generic',
+  r'C:\Windows\Media\Windows Hardware Insert.wav': 'Hardware Insert',
+  r'C:\Windows\Media\Windows Hardware Remove.wav': 'Hardware Remove',
+  r'C:\Windows\Media\Windows Message Nudge.wav': 'Message Nudge',
+};
+
 class SoundService {
   final SharedPreferences _prefs;
 
@@ -52,24 +72,18 @@ class SoundService {
 
   Future<void> playStartSound() async {
     if (!soundEnabled) return;
-    // Windows 上設定頁存的是 macOS 音效路徑，一律改用對應的內建提示音
-    await _play(Platform.isWindows
-        ? kWindowsSounds[kDefaultStartSound]!
-        : startSoundPath);
+    // _playWindows 會把殘留的 macOS 路徑對應成內建提示音
+    await _play(startSoundPath);
   }
 
   Future<void> playStopSound() async {
     if (!soundEnabled) return;
-    await _play(Platform.isWindows
-        ? kWindowsSounds[kDefaultStopSound]!
-        : stopSoundPath);
+    await _play(stopSoundPath);
   }
 
   Future<void> playCancelSound() async {
     if (!soundEnabled) return;
-    await _play(Platform.isWindows
-        ? kWindowsSounds[kDefaultCancelSound]!
-        : kDefaultCancelSound);
+    await _play(kDefaultCancelSound);
   }
 
   /// 播放任意路徑的音效（供設定頁預覽使用）

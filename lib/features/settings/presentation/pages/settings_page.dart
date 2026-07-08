@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -335,9 +337,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
     if (hotkey.modifiers != null) {
       for (final mod in hotkey.modifiers!) {
         String label = '';
-        if (mod == HotKeyModifier.meta) label = '⌘ Command';
+        if (mod == HotKeyModifier.meta) label = Platform.isMacOS ? '⌘ Command' : 'Win';
         if (mod == HotKeyModifier.shift) label = '⇧ Shift';
-        if (mod == HotKeyModifier.alt) label = '⌥ Option';
+        if (mod == HotKeyModifier.alt) label = Platform.isMacOS ? '⌥ Option' : 'Alt';
         if (mod == HotKeyModifier.control) label = '⌃ Control';
         
         if (label.isNotEmpty) {
@@ -422,11 +424,13 @@ class _HotkeyRecorderOverlayState extends State<_HotkeyRecorderOverlay> {
 
     for (final key in sortedKeys) {
       if (_isMeta(key)) {
-        if (!parts.contains('⌘ Command')) parts.add('⌘ Command');
+        final metaLabel = Platform.isMacOS ? '⌘ Command' : 'Win';
+        if (!parts.contains(metaLabel)) parts.add(metaLabel);
       } else if (_isControl(key)) {
         if (!parts.contains('⌃ Control')) parts.add('⌃ Control');
       } else if (_isAlt(key)) {
-        if (!parts.contains('⌥ Option')) parts.add('⌥ Option');
+        final altLabel = Platform.isMacOS ? '⌥ Option' : 'Alt';
+        if (!parts.contains(altLabel)) parts.add(altLabel);
       } else if (_isShift(key)) {
         if (!parts.contains('⇧ Shift')) parts.add('⇧ Shift');
       } else if (key == PhysicalKeyboardKey.space) {
@@ -825,11 +829,16 @@ class _SoundPickerTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final effectivePath = kSystemSoundLabels.containsKey(selectedPath)
+    // 殘留的 macOS 路徑先對應成 Windows 內建提示音再找清單
+    final mappedPath = kSystemSoundLabels.containsKey(selectedPath)
         ? selectedPath
-        : (kSystemSoundLabels.containsKey(kDefaultStartSound)
-            ? kDefaultStartSound
-            : kSystemSoundLabels.keys.first);
+        : kWindowsSounds[selectedPath];
+    final effectivePath =
+        kSystemSoundLabels.containsKey(mappedPath) && mappedPath != null
+            ? mappedPath
+            : (kSystemSoundLabels.containsKey(kDefaultStartSound)
+                ? kDefaultStartSound
+                : kSystemSoundLabels.keys.first);
     final selectedLabel = kSystemSoundLabels[effectivePath] ?? '';
 
     return _SettingTile(
