@@ -358,7 +358,7 @@ class _ModelDropdown extends StatelessWidget {
             final pricing = kModelPricing[m.id];
             final inPerM = m.inputPerM ?? pricing?.inputPerM;
             final outPerM = m.outputPerM ?? pricing?.outputPerM;
-            final recommended = kRecommendedModels.contains(m.id);
+            final recommended = m.recommended;
             return DropdownMenuItem(
               value: m.id,
               child: Padding(
@@ -394,8 +394,8 @@ class _ModelDropdown extends StatelessWidget {
                             ? '免費'
                             : '輸入 \$${_trimZero(inPerM)}／輸出 \$${_trimZero(outPerM)}（每百萬 token）',
                         style: TextStyle(
-                          fontSize: 12,
-                          color: cs.onSurface.withAlpha(140),
+                          fontSize: 14,
+                          color: cs.onSurface.withAlpha(160),
                         ),
                       ),
                   ],

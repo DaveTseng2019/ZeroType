@@ -16,12 +16,6 @@ const Map<String, ({double inputPerM, double outputPerM})> kModelPricing = {
   'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free': (inputPerM: 0, outputPerM: 0),
 };
 
-/// 模型選單標示「推薦」的模型（各服務商 CP 值最高的選擇）
-const Set<String> kRecommendedModels = {
-  'gemini-3-flash-preview',
-  'google/gemini-3-flash-preview',
-};
-
 const Map<String, String> kProviderNames = {
   'openai': 'OpenAI',
   'gemini': 'Gemini',

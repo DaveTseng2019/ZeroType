@@ -4,10 +4,14 @@ class AiModel {
     required this.name,
     this.inputPerM,
     this.outputPerM,
+    this.recommended = false,
   });
 
   final String id;
   final String name;
+
+  /// 由清單載入時依品質級距＋價位動態計算，非寫死
+  final bool recommended;
 
   /// 每百萬 token 美元價（動態清單由 API 帶回；null 時 UI 改查 kModelPricing）
   final double? inputPerM;

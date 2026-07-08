@@ -24,14 +24,14 @@ class ModelConfigRepositoryImpl implements ModelConfigRepository {
     AiProvider parseProvider(Map<String, dynamic> p) => AiProvider(
           id: p['id'] as String,
           name: p['name'] as String,
-          models: (p['models'] as List)
+          models: _markRecommended((p['models'] as List)
               .map(
                 (m) => AiModel(
                   id: m['id'] as String,
                   name: m['name'] as String,
                 ),
               )
-              .toList(),
+              .toList()),
         );
 
     final providers = (json['speechRecognition'] as List)
@@ -99,14 +99,47 @@ class ModelConfigRepositoryImpl implements ModelConfigRepository {
         m.id.contains('-preview-') ||
         (m.id.endsWith('-preview') &&
             ids.contains(m.id.substring(0, m.id.length - '-preview'.length))));
+    final marked = _markRecommended(models);
     // 推薦優先，其餘依輸入價由低到高
-    models.sort((a, b) {
-      final ra = kRecommendedModels.contains(a.id) ? 0 : 1;
-      final rb = kRecommendedModels.contains(b.id) ? 0 : 1;
-      if (ra != rb) return ra - rb;
+    marked.sort((a, b) {
+      if (a.recommended != b.recommended) return a.recommended ? -1 : 1;
       return (a.inputPerM ?? 0).compareTo(b.inputPerM ?? 0);
     });
-    return models;
+    return marked;
+  }
+
+  /// 推薦依據：可信大廠的付費「標準級」模型中，音訊輸入價最低者
+  /// （轉譯成本以輸入為大宗）。品質代理＝廠商＋級距關鍵字；
+  /// 同價時取清單較前者（動態清單 API 順序為新到舊，即較新一代）。
+  static List<AiModel> _markRecommended(List<AiModel> models) {
+    AiModel? best;
+    var bestPrice = double.infinity;
+    for (final m in models) {
+      final org = m.id.contains('/') ? m.id.split('/').first : '';
+      final trusted = org.isEmpty ||
+          const {'google', 'openai', 'mistralai'}.contains(org);
+      // token 邊界比對，避免 gemini 誤中 mini
+      final lite = RegExp(r'(^|[-/.])(lite|nano|micro|mini|small)([-:.]|$)')
+          .hasMatch(m.id.toLowerCase());
+      final price = m.inputPerM ?? kModelPricing[m.id]?.inputPerM;
+      if (!trusted || lite || price == null || price <= 0) continue;
+      if (price < bestPrice) {
+        bestPrice = price;
+        best = m;
+      }
+    }
+    if (best == null) return models;
+    return models
+        .map((m) => m == best
+            ? AiModel(
+                id: m.id,
+                name: m.name,
+                inputPerM: m.inputPerM,
+                outputPerM: m.outputPerM,
+                recommended: true,
+              )
+            : m)
+        .toList();
   }
 
   @override
