@@ -1,5 +1,8 @@
+import 'dart:io';
+
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
+import 'package:window_manager/window_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zero_type/core/di/injection.dart';
@@ -122,16 +125,34 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
             children: [
               Container(
                 height: 44,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
                 color: Theme.of(context).colorScheme.surface,
-                child: Center(
-                  child: Text(
-                    'Zero Type',
-                    style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          fontWeight: FontWeight.bold,
-                          letterSpacing: 0.5,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: DragToMoveArea(
+                        child: Center(
+                          child: Text(
+                            'Zero Type',
+                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  letterSpacing: 0.5,
+                                ),
+                          ),
                         ),
-                  ),
+                      ),
+                    ),
+                    // macOS 仍有原生紅綠燈按鈕,只在 Windows/Linux 顯示自訂按鈕
+                    if (!Platform.isMacOS) ...[
+                      _WindowButton(
+                        icon: Icons.remove,
+                        onTap: windowManager.minimize,
+                      ),
+                      _WindowButton(
+                        icon: Icons.close,
+                        onTap: windowManager.hide, // 關閉 = 縮到系統匣
+                      ),
+                    ],
+                  ],
                 ),
               ),
               const Divider(height: 1, thickness: 1),
@@ -190,6 +211,25 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
           ),
         );
       },
+    );
+  }
+}
+
+class _WindowButton extends StatelessWidget {
+  const _WindowButton({required this.icon, required this.onTap});
+
+  final IconData icon;
+  final Future<void> Function() onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 44,
+      height: 44,
+      child: InkWell(
+        onTap: onTap,
+        child: Icon(icon, size: 16),
+      ),
     );
   }
 }

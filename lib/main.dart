@@ -42,6 +42,8 @@ Future<void> _initWindowManager() async {
     title: 'ZeroType',
   );
   await windowManager.waitUntilReadyToShow(windowOptions, () async {
+    // 攔截關閉事件,改為隱藏到系統匣(見 onWindowClose)
+    await windowManager.setPreventClose(true);
     await windowManager.show();
     await windowManager.focus();
   });
