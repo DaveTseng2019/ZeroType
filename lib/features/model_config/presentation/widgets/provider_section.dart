@@ -193,6 +193,25 @@ class _ProviderSectionState extends State<ProviderSection>
             _buildLabel(context, 'Model'),
             const SizedBox(height: 8),
             _buildModelDropdown(context, colorScheme),
+            if (widget.selectedModelId?.endsWith(':free') == true) ...[
+              const SizedBox(height: 8),
+              Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded,
+                      size: 16, color: Colors.orange[300]),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      '免費模型可用性不穩，常因配額或壅塞而失敗，建議僅供測試',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.orange[300],
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
             const SizedBox(height: 16),
             _buildLabel(context, 'API Key'),
             const SizedBox(height: 8),
@@ -274,7 +293,9 @@ class _ProviderSectionState extends State<ProviderSection>
           .map(
             (m) => DropdownMenuItem(
               value: m.id,
-              child: Text(m.name),
+              child: Text(
+                m.id.endsWith(':free') ? '${m.name}（免費，可用性不穩）' : m.name,
+              ),
             ),
           )
           .toList(),

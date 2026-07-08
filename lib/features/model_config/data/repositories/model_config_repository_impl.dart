@@ -100,8 +100,11 @@ class ModelConfigRepositoryImpl implements ModelConfigRepository {
         (m.id.endsWith('-preview') &&
             ids.contains(m.id.substring(0, m.id.length - '-preview'.length))));
     final marked = _markRecommended(models);
-    // 推薦優先，其餘依輸入價由低到高
+    // 推薦優先，其餘依輸入價由低到高；免費模型可用性差，一律排最後
     marked.sort((a, b) {
+      final aFree = a.id.endsWith(':free');
+      final bFree = b.id.endsWith(':free');
+      if (aFree != bFree) return aFree ? 1 : -1;
       if (a.recommended != b.recommended) return a.recommended ? -1 : 1;
       return (a.inputPerM ?? 0).compareTo(b.inputPerM ?? 0);
     });
