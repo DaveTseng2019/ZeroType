@@ -41,6 +41,14 @@ class SpeechRecognitionService {
           prompt: prompt,
           customEndpoint: customEndpoint,
         );
+      case 'openrouter':
+        return _transcribeWithOpenRouter(
+          audioFilePath: audioFilePath,
+          apiKey: apiKey,
+          model: model,
+          prompt: prompt,
+          customEndpoint: customEndpoint,
+        );
       default:
         throw Exception('不支援的語音辨識服務商：$provider');
     }
@@ -175,6 +183,87 @@ class SpeechRecognitionService {
     } on DioException catch (e) {
       print('[Gemini] DioException: ${e.message}');
       print('[Gemini] Status: ${e.response?.statusCode}');
+      rethrow;
+    }
+  }
+
+  Future<TranscriptionResult> _transcribeWithOpenRouter({
+    required String audioFilePath,
+    required String apiKey,
+    required String model,
+    required String prompt,
+    String? customEndpoint,
+  }) async {
+    print('[OpenRouter] Start transcription: $audioFilePath');
+
+    final fileToUpload = File(audioFilePath);
+    if (!fileToUpload.existsSync()) {
+      throw Exception('找不到音檔：$audioFilePath');
+    }
+
+    // OpenRouter 沒有 /audio/transcriptions 端點，
+    // 音訊要以 base64 走 chat/completions 的 input_audio。
+    final ext = audioFilePath.split('.').last.toLowerCase();
+    final format = const {'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'}
+            .contains(ext)
+        ? ext
+        : 'm4a';
+    final base64Audio = base64Encode(await fileToUpload.readAsBytes());
+
+    final finalPrompt = prompt.isEmpty
+        ? 'Generate a transcript of the speech. Output only the transcript.'
+        : prompt;
+
+    final url = (customEndpoint != null && customEndpoint.isNotEmpty)
+        ? customEndpoint
+        : 'https://openrouter.ai/api/v1/chat/completions';
+
+    try {
+      final response = await _dio.post<Map<String, dynamic>>(
+        url,
+        data: {
+          'model': model,
+          'messages': [
+            {
+              'role': 'user',
+              'content': [
+                {'type': 'text', 'text': finalPrompt},
+                {
+                  'type': 'input_audio',
+                  'input_audio': {
+                    'data': base64Audio,
+                    'format': format,
+                  },
+                },
+              ],
+            },
+          ],
+        },
+        options: Options(
+          headers: {
+            'Authorization': 'Bearer $apiKey',
+            'Content-Type': 'application/json',
+          },
+        ),
+      );
+
+      final choices = response.data?['choices'] as List?;
+      if (choices == null || choices.isEmpty) {
+        throw Exception('OpenRouter 轉譯失敗：無候選回應');
+      }
+
+      final text =
+          (choices[0]['message']?['content'] as String? ?? '').trim();
+
+      final usage = response.data?['usage'] as Map<String, dynamic>?;
+      final inputTokens = usage?['prompt_tokens'] as int?;
+      final outputTokens = usage?['completion_tokens'] as int?;
+
+      print('[OpenRouter] Success! tokens: in=$inputTokens out=$outputTokens');
+      return (text: text, inputTokens: inputTokens, outputTokens: outputTokens);
+    } on DioException catch (e) {
+      print('[OpenRouter] DioException: ${e.message}');
+      print('[OpenRouter] Status: ${e.response?.statusCode}');
       rethrow;
     }
   }

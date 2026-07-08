@@ -23,6 +23,24 @@
           "name": "Gemini 2.5 Flash"
         }
       ]
+    },
+    {
+      "id": "openrouter",
+      "name": "OpenRouter",
+      "models": [
+        {
+          "id": "google/gemini-3-flash-preview",
+          "name": "Gemini 3 Flash Preview"
+        },
+        {
+          "id": "google/gemini-2.5-flash",
+          "name": "Gemini 2.5 Flash"
+        },
+        {
+          "id": "openai/gpt-4o-audio-preview",
+          "name": "GPT-4o Audio Preview"
+        }
+      ]
     }
   ]
 }
