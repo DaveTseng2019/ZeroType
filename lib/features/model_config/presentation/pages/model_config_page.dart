@@ -1,6 +1,7 @@
 import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:zero_type/core/constants/model_pricing.dart';
 import '../controllers/model_config_controller.dart';
 import '../../domain/entities/ai_provider.dart';
 
@@ -315,6 +316,10 @@ class _ApiKeyInputState extends State<_ApiKeyInput> {
   }
 }
 
+/// 1.50 → "1.5"、2.00 → "2"，並吸收浮點誤差（0.3999… → "0.4"）
+String _trimZero(double v) =>
+    v.toStringAsFixed(2).replaceFirst(RegExp(r'\.?0+$'), '');
+
 class _ModelDropdown extends StatelessWidget {
   const _ModelDropdown({
     required this.models,
@@ -342,10 +347,60 @@ class _ModelDropdown extends StatelessWidget {
           value: models.any((m) => m.id == selectedModelId) ? selectedModelId : null,
           isExpanded: true,
           hint: const Text('選擇一個模型'),
+          itemHeight: null,
+          // 收合時只顯示名稱，展開才顯示費率
+          selectedItemBuilder: (_) =>
+              models.map((m) => Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(m.name),
+                  )).toList(),
           items: models.map((m) {
+            final pricing = kModelPricing[m.id];
+            final inPerM = m.inputPerM ?? pricing?.inputPerM;
+            final outPerM = m.outputPerM ?? pricing?.outputPerM;
+            final recommended = kRecommendedModels.contains(m.id);
             return DropdownMenuItem(
               value: m.id,
-              child: Text(m.name),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Flexible(child: Text(m.name)),
+                        if (recommended) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: cs.primary.withAlpha(30),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              '推薦',
+                              style: TextStyle(
+                                  fontSize: 11, color: cs.primary),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (inPerM != null && outPerM != null)
+                      Text(
+                        inPerM == 0 && outPerM == 0
+                            ? '免費'
+                            : '輸入 \$${_trimZero(inPerM)}／輸出 \$${_trimZero(outPerM)}（每百萬 token）',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: cs.onSurface.withAlpha(140),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
             );
           }).toList(),
           onChanged: onChanged,

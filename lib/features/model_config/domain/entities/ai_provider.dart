@@ -1,8 +1,17 @@
 class AiModel {
-  const AiModel({required this.id, required this.name});
+  const AiModel({
+    required this.id,
+    required this.name,
+    this.inputPerM,
+    this.outputPerM,
+  });
 
   final String id;
   final String name;
+
+  /// 每百萬 token 美元價（動態清單由 API 帶回；null 時 UI 改查 kModelPricing）
+  final double? inputPerM;
+  final double? outputPerM;
 }
 
 class AiProvider {
