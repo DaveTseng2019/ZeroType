@@ -31,6 +31,9 @@ dependencies:
   # Recording
   record: ^6.2.0
 
+  # Windows sound playback (PlaySoundW via winmm.dll)
+  ffi: ^2.1.0
+
   # Global hotkey
   hotkey_manager: ^0.2.3
 

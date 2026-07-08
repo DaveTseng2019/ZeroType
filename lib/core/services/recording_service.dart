@@ -37,10 +37,12 @@ class RecordingService {
 
     print('[RecordingService] starting at $_currentFilePath');
     await _recorder.start(
-      const RecordConfig(
+      RecordConfig(
         encoder: AudioEncoder.aacLc,
         bitRate: 128000,
-        sampleRate: 16000,
+        // Windows Media Foundation 的 AAC 編碼器只支援 44.1/48 kHz，
+        // 16 kHz 會拋 MF_E_INVALIDMEDIATYPE。
+        sampleRate: Platform.isWindows ? 44100 : 16000,
       ),
       path: _currentFilePath!,
     );

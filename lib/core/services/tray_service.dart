@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:tray_manager/tray_manager.dart';
 
 class TrayService with TrayListener {
@@ -13,7 +15,12 @@ class TrayService with TrayListener {
 
     trayManager.addListener(this);
 
-    await trayManager.setIcon('assets/icons/tray_icon.png');
+    // Windows 的系統匣只吃 .ico，PNG 會靜默失敗導致沒有圖示。
+    await trayManager.setIcon(
+      Platform.isWindows
+          ? 'assets/icons/tray_icon.ico'
+          : 'assets/icons/tray_icon.png',
+    );
     await trayManager.setToolTip('ZeroType');
     await _buildMenu();
   }

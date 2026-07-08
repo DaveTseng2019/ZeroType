@@ -1,5 +1,7 @@
+import 'dart:ffi';
 import 'dart:io';
 
+import 'package:ffi/ffi.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zero_type/core/constants/app_constants.dart';
 
@@ -27,6 +29,13 @@ const String kDefaultStartSound = '/System/Library/Sounds/Ping.aiff';
 const String kDefaultStopSound = '/System/Library/Sounds/Submarine.aiff';
 const String kDefaultCancelSound = '/System/Library/Sounds/Basso.aiff';
 
+/// Windows 內建語音提示音（對應 macOS 預設音效）
+const Map<String, String> kWindowsSounds = {
+  kDefaultStartSound: r'C:\Windows\Media\Speech On.wav',
+  kDefaultStopSound: r'C:\Windows\Media\Speech Off.wav',
+  kDefaultCancelSound: r'C:\Windows\Media\Speech Misrecognition.wav',
+};
+
 class SoundService {
   final SharedPreferences _prefs;
 
@@ -43,17 +52,24 @@ class SoundService {
 
   Future<void> playStartSound() async {
     if (!soundEnabled) return;
-    await _play(startSoundPath);
+    // Windows 上設定頁存的是 macOS 音效路徑，一律改用對應的內建提示音
+    await _play(Platform.isWindows
+        ? kWindowsSounds[kDefaultStartSound]!
+        : startSoundPath);
   }
 
   Future<void> playStopSound() async {
     if (!soundEnabled) return;
-    await _play(stopSoundPath);
+    await _play(Platform.isWindows
+        ? kWindowsSounds[kDefaultStopSound]!
+        : stopSoundPath);
   }
 
   Future<void> playCancelSound() async {
     if (!soundEnabled) return;
-    await _play(kDefaultCancelSound);
+    await _play(Platform.isWindows
+        ? kWindowsSounds[kDefaultCancelSound]!
+        : kDefaultCancelSound);
   }
 
   /// 播放任意路徑的音效（供設定頁預覽使用）
@@ -90,11 +106,39 @@ class SoundService {
   }
 
   static Future<void> _play(String path) async {
+    if (Platform.isWindows) {
+      _playWindows(path);
+      return;
+    }
     if (!Platform.isMacOS) return;
     try {
       await Process.run('afplay', [path]);
     } catch (_) {
       // 忽略音效錯誤
     }
+  }
+
+  static final _playSoundW = DynamicLibrary.open('winmm.dll').lookupFunction<
+      Int32 Function(Pointer<Utf16>, IntPtr, Uint32),
+      int Function(Pointer<Utf16>, int, int)>('PlaySoundW');
+
+  // SND_ASYNC 播放時路徑字串必須存活到播放結束，
+  // 因此快取 native 字串不釋放（最多幾個路徑的固定成本）。
+  static final Map<String, Pointer<Utf16>> _nativePathCache = {};
+
+  static void _playWindows(String path) {
+    // 設定存的是 macOS 音效路徑時，改播對應的 Windows 內建提示音
+    final wavPath =
+        path.toLowerCase().endsWith('.wav') ? path : kWindowsSounds[path];
+    if (wavPath == null || !File(wavPath).existsSync()) {
+      print('[SoundService] no Windows sound for: $path');
+      return;
+    }
+    final native =
+        _nativePathCache.putIfAbsent(wavPath, () => wavPath.toNativeUtf16());
+    const sndAsync = 0x0001; // SND_ASYNC
+    const sndNoDefault = 0x0002; // SND_NODEFAULT
+    const sndFilename = 0x00020000; // SND_FILENAME
+    _playSoundW(native, 0, sndAsync | sndNoDefault | sndFilename);
   }
 }

@@ -128,6 +128,11 @@ class ZeroTypeController extends _$ZeroTypeController {
     unawaited(getIt<SoundService>().pauseMusic());
     unawaited(getIt<SoundService>().playStartSound());
 
+    // Windows 開啟音訊擷取會壓掉正在播的開始音，先給音效一點頭段
+    if (Platform.isWindows) {
+      await Future.delayed(const Duration(milliseconds: 250));
+    }
+
     if (!ref.mounted || _cancelled) return;
     state = state.copyWith(status: ZeroTypeStatus.recording, amplitude: 0.0);
     _recordingStartTime = DateTime.now();
@@ -155,7 +160,8 @@ class ZeroTypeController extends _$ZeroTypeController {
           },
         ),
       ]);
-    } catch (e) {
+    } catch (e, st) {
+      print('[ZeroType] startRecording failed: $e\n$st');
       if (!ref.mounted || _cancelled) return;
       state = state.copyWith(
         status: ZeroTypeStatus.error,
