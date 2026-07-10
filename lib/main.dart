@@ -24,13 +24,16 @@ import 'shared/widgets/recording_overlay.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await _initWindowManager();
+  // 使用者選擇啟動時縮小至系統匣,則不顯示視窗
+  final prefs = await SharedPreferences.getInstance();
+  final startHidden = prefs.getBool(AppConstants.startupMinimizedKey) ?? false;
+  await _initWindowManager(showWindow: !startHidden);
   await configureDependencies();
   await _initLaunchAtStartup();
   runApp(const ProviderScope(child: ZeroTypeApp()));
 }
 
-Future<void> _initWindowManager() async {
+Future<void> _initWindowManager({required bool showWindow}) async {
   await windowManager.ensureInitialized();
   const windowOptions = WindowOptions(
     size: Size(900, 650),
@@ -44,8 +47,10 @@ Future<void> _initWindowManager() async {
   await windowManager.waitUntilReadyToShow(windowOptions, () async {
     // 攔截關閉事件,改為隱藏到系統匣(見 onWindowClose)
     await windowManager.setPreventClose(true);
-    await windowManager.show();
-    await windowManager.focus();
+    if (showWindow) {
+      await windowManager.show();
+      await windowManager.focus();
+    }
   });
 }
 

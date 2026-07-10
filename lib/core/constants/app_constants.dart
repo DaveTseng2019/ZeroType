@@ -13,6 +13,7 @@ class AppConstants {
   static const String isRefinementEnabledKey = 'is_refinement_enabled';
   static const String hotkeyKey = 'global_hotkey';
   static const String launchAtStartupKey = 'launch_at_startup';
+  static const String startupMinimizedKey = 'startup_minimized';
   static const String soundEnabledKey = 'sound_enabled';
   static const String startSoundKey = 'start_sound';
   static const String stopSoundKey = 'stop_sound';

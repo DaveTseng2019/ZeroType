@@ -122,6 +122,29 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                       loading: () => const _LoadingTile(),
                       error: (_, __) => const SizedBox.shrink(),
                     ),
+                    // Startup Minimized (only when launch at startup is on)
+                    settings.when(
+                      data: (data) => data.launchAtStartup
+                          ? Column(
+                              children: [
+                                const Divider(height: 1, indent: 56),
+                                _SettingTile(
+                                  icon: Icons.remove_circle_outline,
+                                  title: '啟動時縮小至系統匣',
+                                  subtitle: '程式啟動時不顯示視窗,僅顯示於系統匣',
+                                  trailing: Switch(
+                                    value: data.startupMinimized,
+                                    onChanged: (val) => ref
+                                        .read(settingsControllerProvider.notifier)
+                                        .toggleStartupMinimized(val),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : const SizedBox.shrink(),
+                      loading: () => const SizedBox.shrink(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
                     const Divider(height: 1, indent: 56),
                     // History Retention Days
                     settings.when(

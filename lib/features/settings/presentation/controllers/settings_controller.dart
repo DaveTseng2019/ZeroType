@@ -23,6 +23,7 @@ class SettingsController extends _$SettingsController {
     try {
       print('[SettingsController] Checking if launch at startup is enabled...');
       final isLaunchEnabled = getIt<SharedPreferences>().getBool(AppConstants.launchAtStartupKey) ?? false;
+      final startupMinimized = getIt<SharedPreferences>().getBool(AppConstants.startupMinimizedKey) ?? false;
       
       print('[SettingsController] Fetching current hotkey...');
       final hotkey = getIt<HotkeyService>().currentHotkey;
@@ -41,6 +42,7 @@ class SettingsController extends _$SettingsController {
       print('[SettingsController] Build complete.');
       return SettingsState(
         launchAtStartup: isLaunchEnabled,
+        startupMinimized: startupMinimized,
         hotkey: hotkey,
         isAccessibilityAuthorized: isAccessibilityAuthorized,
         isMicrophoneAuthorized: isMicrophoneAuthorized,
@@ -75,6 +77,14 @@ class SettingsController extends _$SettingsController {
     final currentState = state.value;
     if (currentState != null) {
       state = AsyncData(currentState.copyWith(launchAtStartup: value));
+    }
+  }
+
+  Future<void> toggleStartupMinimized(bool value) async {
+    await getIt<SharedPreferences>().setBool(AppConstants.startupMinimizedKey, value);
+    final currentState = state.value;
+    if (currentState != null) {
+      state = AsyncData(currentState.copyWith(startupMinimized: value));
     }
   }
 

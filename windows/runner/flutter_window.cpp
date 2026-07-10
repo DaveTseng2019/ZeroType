@@ -30,7 +30,8 @@ bool FlutterWindow::OnCreate() {
   SetChildContent(flutter_controller_->view()->GetNativeWindow());
 
   flutter_controller_->engine()->SetNextFrameCallback([&]() {
-    this->Show();
+    // 是否顯示視窗交由 Dart 端 windowManager.show() 決定(啟動時縮小至系統匣)
+    // this->Show();
   });
 
   // Flutter can complete the first frame before the "show window" callback is

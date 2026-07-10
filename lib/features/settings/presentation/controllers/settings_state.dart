@@ -8,6 +8,7 @@ part 'settings_state.freezed.dart';
 abstract class SettingsState with _$SettingsState {
   const factory SettingsState({
     @Default(false) bool launchAtStartup,
+    @Default(false) bool startupMinimized,
     required HotKey hotkey,
     @Default(false) bool isAccessibilityAuthorized,
     @Default(false) bool isMicrophoneAuthorized,
