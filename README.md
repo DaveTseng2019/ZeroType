@@ -11,13 +11,15 @@
 ## ✨ 功能特色
 
 ### 🎙️ 全局快捷鍵錄音
-- 自訂全局快捷鍵（預設 `⌥ Option + Space`），在任何應用程式中觸發錄音
+- 自訂全局快捷鍵（預設 `⌥ Option + Space`，Windows 顯示為 `Alt + Space`），在任何應用程式中觸發錄音
 - 錄音中顯示浮動音波 Overlay，提供即時視覺回饋
 - 按下 `Esc` 或點擊取消按鈕可中止錄音
 
 ### 🧠 AI 驅動的語音辨識
-- 支援 **OpenAI**（`gpt-4o-transcribe`）與 **Google Gemini**（`gemini-*`）兩大語音辨識後端
-- 辨識完成後，結果自動貼至游標所在位置（模擬 `⌘V`）
+- 支援 **OpenAI**（`gpt-4o-transcribe`）、**Google Gemini**（`gemini-*`）與 **OpenRouter**（一把 Key 通吃多家模型）三種語音辨識後端
+- OpenRouter 模型清單由官方 API 線上取得（只列支援音訊輸入的模型），下拉選單直接顯示每百萬 token 費率並標示「推薦」；離線時退回內建清單
+- 免費模型（`:free`）排在清單最後並附可用性警告，僅建議測試用
+- 辨識完成後，結果自動貼至游標所在位置（模擬 `⌘V` / `Ctrl+V`）
 - 支援自訂 API Endpoint（可使用 OpenAI-compatible 的第三方服務）
 
 ### 🇹🇼 針對繁體中文深度優化的提示詞
@@ -39,26 +41,32 @@
 
 ### ⚙️ 設定頁面
 - 深色 / 淺色模式切換
-- 開機自動啟動
-- 快捷鍵自訂（支援任意組合鍵）
+- 開機自動啟動；開啟後可再勾選「啟動時縮小至系統匣」，開機不跳視窗
+- 快捷鍵自訂（支援任意組合鍵，按鍵標籤依平台顯示 `⌘/⌥` 或 `Win/Alt`）
+- 錄音開始 / 結束提示音可挑選系統內建音效（macOS 與 Windows 各自的音效清單）
 - 麥克風權限與輔助使用權限狀態即時顯示
+
+### 🪟 Windows 支援
+- 自訂標題列：拖曳移動視窗、最小化，關閉鍵等於縮到系統匣（程式繼續在背景待命）
+- 系統匣圖示可隨時叫回視窗或結束程式
 
 ---
 
 ## 🔧 使用前準備
 
 ### 系統需求
-- macOS 11.0+
+- macOS 11.0+ 或 Windows 10/11
 - Flutter 3.x（如需自行 build）
 
 ### 必要系統授權
 1. **麥克風** — 錄音所需
-2. **輔助使用（Accessibility）** — 模擬鍵盤輸入（`⌘V` 貼上）所需
+2. **輔助使用（Accessibility，僅 macOS）** — 模擬鍵盤輸入（`⌘V` 貼上）所需
 
 ### API Key
 前往以下任一服務申請 API Key：
 - [OpenAI](https://platform.openai.com/api-keys)（支援 Transcribe 語音辨識）
 - [Google AI Studio](https://aistudio.google.com/app/apikey)（支援 Gemini 多模態）
+- [OpenRouter](https://openrouter.ai/keys)（一把 Key 使用 Gemini / GPT Audio 等多家音訊模型）
 
 ---
 
@@ -66,7 +74,7 @@
 
 ### 方法一：直接下載（推薦）
 
-1. 前往 [Releases](https://github.com/your-username/zerotype/releases) 頁面下載最新版本
+1. 前往 [Releases](https://github.com/nick1ee/ZeroType/releases) 頁面下載最新版本
 2. macOS：開啟 `.dmg` 並將 **ZeroType.app** 拖入 Applications 資料夾；Windows：直接執行 `zero_type.exe`
 3. 首次執行時，依照提示授予以下權限：
    - **麥克風** — 語音輸入所需
@@ -78,8 +86,8 @@
 **開發模式**
 
 ```bash
-git clone https://github.com/your-username/zerotype.git
-cd zerotype
+git clone https://github.com/nick1ee/ZeroType.git
+cd ZeroType
 flutter pub get
 dart run build_runner build --delete-conflicting-outputs   # 產生 freezed / riverpod / auto_route 程式碼
 flutter run -d macos      
@@ -100,7 +108,7 @@ flutter build windows --release
 
 ## 🔄 更新方式
 
-**一般使用者**：到 [Releases](https://github.com/your-username/zerotype/releases) 下載新版，直接覆蓋舊的 `.app` / `.exe` 即可。設定與歷史紀錄存放在使用者資料目錄，覆蓋安裝不會遺失。
+**一般使用者**：到 [Releases](https://github.com/nick1ee/ZeroType/releases) 下載新版，直接覆蓋舊的 `.app` / `.exe` 即可。設定與歷史紀錄存放在使用者資料目錄，覆蓋安裝不會遺失。
 
 **從原始碼更新**
 
@@ -124,7 +132,19 @@ flutter run -d macos      # 或重新 build release
 
 ## 📜 版本更新紀錄 (Release Notes)
 
-### [v1.0.2] - 當前版本
+### [v1.0.3] - 當前版本
+- **Windows 支援** 🪟
+  - 可在 Windows 建置與執行：錄音、系統匣圖示、提示音效全部到位。
+  - 自訂標題列支援拖曳移動與最小化，關閉鍵改為縮到系統匣。
+  - 快捷鍵設定的按鍵標籤依平台顯示（`Win` / `Alt` 取代 `⌘` / `⌥`）。
+  - 「開機自動啟動」新增「啟動時縮小至系統匣」選項，且每次啟動會重新寫入登錄檔路徑，移動執行檔後不會失效。
+- **新增 OpenRouter 供應商** 🔀
+  - 一把 API Key 即可使用 Gemini、GPT Audio 等多家音訊模型。
+  - 模型清單改由 OpenRouter API 線上取得（僅列支援音訊輸入的模型），含即時費率；離線時退回內建清單。
+  - 下拉選單顯示每百萬 token 輸入／輸出價格，並依品質級距與價位自動標示「推薦」。
+  - 免費模型移到清單最後並標註可用性警告。
+
+### [v1.0.2]
 - **新增歷史紀錄頁** 🎨
   - 提供歷史產生逐字稿的紀錄語音檔，並可提供檢視。
   - 新增總轉寫次數與總花費（USD）的持久化累計統計。
