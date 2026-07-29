@@ -5,7 +5,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:zero_type/core/di/injection.dart';
+import 'package:zero_type/core/services/app_lifecycle.dart';
 import 'package:zero_type/core/services/sound_service.dart';
 import 'package:zero_type/core/theme/theme_controller.dart';
 import '../controllers/settings_controller.dart';
@@ -335,10 +337,40 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                     ),
                   ],
                 ),
+
+                const SizedBox(height: 24),
+
+                // --- Quit ---
+                Center(
+                  child: TextButton.icon(
+                    onPressed: quitApp,
+                    icon: const Icon(Icons.power_settings_new, size: 18),
+                    label: const Text('結束 ZeroType'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+
+                // --- Version ---
+                Center(
+                  child: FutureBuilder<PackageInfo>(
+                    future: PackageInfo.fromPlatform(),
+                    builder: (context, snapshot) => Text(
+                      snapshot.hasData
+                          ? 'ZeroType v${snapshot.data!.version}'
+                          : '',
+                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            color: Theme.of(context).hintColor,
+                          ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
-          
+
           // --- Hotkey Recorder Overlay ---
           settings.maybeWhen(
             data: (data) => data.isRecordingHotkey 

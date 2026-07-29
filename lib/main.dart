@@ -14,6 +14,7 @@ import 'core/controllers/zero_type_controller.dart';
 import 'core/di/injection.dart';
 import 'core/router/app_router.dart';
 import 'core/router/router_provider.dart';
+import 'core/services/app_lifecycle.dart';
 import 'core/services/hotkey_service.dart';
 import 'core/services/tray_service.dart';
 import 'core/state/zero_type_state.dart';
@@ -24,6 +25,13 @@ import 'shared/widgets/recording_overlay.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  // 已有實例在跑就把它叫出來,本次直接退出
+  if (!await ensureSingleInstance(onSecondLaunch: () async {
+    await windowManager.show();
+    await windowManager.focus();
+  })) {
+    exit(0);
+  }
   // 使用者選擇啟動時縮小至系統匣,則不顯示視窗
   final prefs = await SharedPreferences.getInstance();
   final startHidden = prefs.getBool(AppConstants.startupMinimizedKey) ?? false;
@@ -120,7 +128,7 @@ class _AppInitializerState extends ConsumerState<_AppInitializer>
 
     await _trayService.initialize(
       onShowWindow: _showWindow,
-      onQuit: _quit,
+      onQuit: quitApp,
     );
 
     // Auto-purge expired history records on startup
@@ -136,12 +144,6 @@ class _AppInitializerState extends ConsumerState<_AppInitializer>
   void _showWindow() {
     windowManager.show();
     windowManager.focus();
-  }
-
-  void _quit() {
-    _hotkeyService.dispose();
-    _trayService.dispose();
-    exit(0);
   }
 
   @override
