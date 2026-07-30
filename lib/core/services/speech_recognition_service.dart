@@ -121,8 +121,8 @@ class SpeechRecognitionService {
       throw Exception('找不到音檔：$audioFilePath');
     }
 
-    final mimeType = audioFilePath.endsWith('.m4a')
-        ? 'audio/mp4'
+    final mimeType = audioFilePath.endsWith('.wav')
+        ? 'audio/wav'
         : (audioFilePath.endsWith('.mp3') ? 'audio/mpeg' : 'audio/mp4');
     final audioBytes = await fileToUpload.readAsBytes();
     final base64Audio = base64Encode(audioBytes);
@@ -207,7 +207,7 @@ class SpeechRecognitionService {
     final format = const {'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'}
             .contains(ext)
         ? ext
-        : 'm4a';
+        : 'wav';
     final base64Audio = base64Encode(await fileToUpload.readAsBytes());
 
     final finalPrompt = prompt.isEmpty
@@ -259,7 +259,13 @@ class SpeechRecognitionService {
       final inputTokens = usage?['prompt_tokens'] as int?;
       final outputTokens = usage?['completion_tokens'] as int?;
 
-      print('[OpenRouter] Success! tokens: in=$inputTokens out=$outputTokens');
+      // 上游供應商決定 input_audio 吃不吃得到。實測同一個 model id 被路由到不吃音訊的
+      // 供應商時，音訊會被默默丟掉：prompt_tokens 不再隨音檔長度增加，模型只看到文字。
+      final upstream = response.data?['provider'];
+      final audioBytes = base64Audio.length * 3 ~/ 4;
+      print('[OpenRouter] Success! provider=$upstream '
+          'tokens: in=$inputTokens out=$outputTokens '
+          '(audio ${audioBytes ~/ 1024}KB / ${format})');
       return (text: text, inputTokens: inputTokens, outputTokens: outputTokens);
     } on DioException catch (e) {
       print('[OpenRouter] DioException: ${e.message}');

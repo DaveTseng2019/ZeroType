@@ -124,13 +124,22 @@ class ZeroTypeController extends _$ZeroTypeController {
       return;
     }
 
+    // 開了等待麥克風就緒時，提示音改由 onCaptureStart 觸發 —— 那一刻才真的收得到聲音。
+    // 提早播只會在藍牙切 HFP 的當下被吃掉，等於沒有提示。
+    final warmupTimeout = Duration(
+      milliseconds:
+          getIt<SharedPreferences>().getInt(AppConstants.recordWarmupMsKey) ?? 0,
+    );
+
     // [優化2] 音效不阻塞錄音啟動
     unawaited(getIt<SoundService>().pauseMusic());
-    unawaited(getIt<SoundService>().playStartSound());
+    if (warmupTimeout == Duration.zero) {
+      unawaited(getIt<SoundService>().playStartSound());
 
-    // Windows 開啟音訊擷取會壓掉正在播的開始音，先給音效一點頭段
-    if (Platform.isWindows) {
-      await Future.delayed(const Duration(milliseconds: 250));
+      // Windows 開啟音訊擷取會壓掉正在播的開始音，先給音效一點頭段
+      if (Platform.isWindows) {
+        await Future.delayed(const Duration(milliseconds: 250));
+      }
     }
 
     if (!ref.mounted || _cancelled) return;
@@ -152,6 +161,20 @@ class ZeroTypeController extends _$ZeroTypeController {
       await Future.wait([
         _showNativeOverlay('recording', '錄音中'),
         _recordingService.startRecording(
+          deviceId: getIt<SharedPreferences>()
+              .getString(AppConstants.inputDeviceIdKey),
+          noiseGate: getIt<SharedPreferences>()
+                  .getBool(AppConstants.noiseGateEnabledKey) ??
+              false,
+          noiseGateStrength: getIt<SharedPreferences>()
+                  .getDouble(AppConstants.noiseGateStrengthKey) ??
+              kDefaultNoiseGateStrength,
+          warmupTimeout: warmupTimeout,
+          onCaptureStart: () {
+            if (ref.mounted && !_cancelled) {
+              unawaited(getIt<SoundService>().playStartSound());
+            }
+          },
           onAmplitude: (amp) {
             if (ref.mounted && !_cancelled) {
               state = state.copyWith(amplitude: amp);

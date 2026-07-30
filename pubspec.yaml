@@ -34,6 +34,9 @@ dependencies:
   # Windows sound playback (PlaySoundW via winmm.dll)
   ffi: ^2.1.0
 
+  # Windows 預設錄音裝置查詢（IMMDeviceEnumerator）；本來就是傳遞依賴，改成直接依賴
+  win32: ^5.15.0
+
   # Global hotkey
   hotkey_manager: ^0.2.3
 

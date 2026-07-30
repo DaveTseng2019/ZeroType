@@ -19,6 +19,10 @@ class AppConstants {
   static const String stopSoundKey = 'stop_sound';
   static const String historyRetentionDaysKey = 'history_retention_days';
   static const String maxRecordingMinutesKey = 'max_recording_minutes';
+  static const String inputDeviceIdKey = 'input_device_id';
+  static const String noiseGateEnabledKey = 'noise_gate_enabled';
+  static const String noiseGateStrengthKey = 'noise_gate_strength';
+  static const String recordWarmupMsKey = 'record_warmup_ms';
 }
 
 class SecureStorageKeys {

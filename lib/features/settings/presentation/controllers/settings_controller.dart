@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zero_type/core/constants/app_constants.dart';
 import 'package:zero_type/core/di/injection.dart';
 import 'package:zero_type/core/services/hotkey_service.dart';
+import 'package:zero_type/core/services/recording_service.dart';
 import 'package:zero_type/core/services/sound_service.dart';
 import 'settings_state.dart';
 
@@ -38,6 +39,13 @@ class SettingsController extends _$SettingsController {
       final stopSound = prefs.getString(AppConstants.stopSoundKey) ?? kDefaultStopSound;
       final historyRetentionDays = prefs.getInt(AppConstants.historyRetentionDaysKey) ?? 7;
       final maxRecordingMinutes = prefs.getInt(AppConstants.maxRecordingMinutesKey) ?? 1;
+      final inputDeviceId = prefs.getString(AppConstants.inputDeviceIdKey) ?? '';
+      final devices = await _loadDevices();
+      final noiseGateEnabled =
+          prefs.getBool(AppConstants.noiseGateEnabledKey) ?? false;
+      final noiseGateStrength =
+          prefs.getDouble(AppConstants.noiseGateStrengthKey) ??
+              kDefaultNoiseGateStrength;
 
       print('[SettingsController] Build complete.');
       return SettingsState(
@@ -51,6 +59,13 @@ class SettingsController extends _$SettingsController {
         stopSound: stopSound,
         historyRetentionDays: historyRetentionDays,
         maxRecordingMinutes: maxRecordingMinutes,
+        inputDeviceId: inputDeviceId,
+        inputDevices: devices.list,
+        defaultDeviceLabel: devices.defaultLabel,
+        defaultCommsDeviceLabel: devices.commsLabel,
+        noiseGateEnabled: noiseGateEnabled,
+        noiseGateStrength: noiseGateStrength,
+        recordWarmupMs: prefs.getInt(AppConstants.recordWarmupMsKey) ?? 0,
       );
     } catch (e, st) {
       print('[SettingsController] Error building settings state: $e\n$st');
@@ -190,6 +205,61 @@ class SettingsController extends _$SettingsController {
     }
   }
 
+  /// 空字串 = 系統預設輸入裝置
+  Future<void> setInputDeviceId(String deviceId) async {
+    await getIt<SharedPreferences>()
+        .setString(AppConstants.inputDeviceIdKey, deviceId);
+    final currentState = state.value;
+    if (currentState != null) {
+      state = AsyncData(currentState.copyWith(inputDeviceId: deviceId));
+    }
+  }
+
+  Future<void> toggleNoiseGate(bool value) async {
+    await getIt<SharedPreferences>()
+        .setBool(AppConstants.noiseGateEnabledKey, value);
+    final currentState = state.value;
+    if (currentState != null) {
+      state = AsyncData(currentState.copyWith(noiseGateEnabled: value));
+    }
+  }
+
+  Future<void> setNoiseGateStrength(double strength) async {
+    await getIt<SharedPreferences>()
+        .setDouble(AppConstants.noiseGateStrengthKey, strength);
+    final currentState = state.value;
+    if (currentState != null) {
+      state = AsyncData(currentState.copyWith(noiseGateStrength: strength));
+    }
+  }
+
+  Future<void> setRecordWarmupMs(int ms) async {
+    await getIt<SharedPreferences>()
+        .setInt(AppConstants.recordWarmupMsKey, ms);
+    final currentState = state.value;
+    if (currentState != null) {
+      state = AsyncData(currentState.copyWith(recordWarmupMs: ms));
+    }
+  }
+
+  /// 裝置清單 + 系統預設裝置實際是哪一支（設定頁要顯示，不然「系統預設」看不出是誰）
+  Future<({List<InputDevice> list, String defaultLabel, String commsLabel})>
+      _loadDevices() async {
+    List<InputDevice> list;
+    try {
+      list = await AudioRecorder().listInputDevices();
+    } catch (e) {
+      print('[SettingsController] listInputDevices error: $e');
+      list = const [];
+    }
+    final ids = defaultInputDeviceIds();
+    return (
+      list: list,
+      defaultLabel: resolveInputDevice(list, ids.console)?.label ?? '',
+      commsLabel: resolveInputDevice(list, ids.communications)?.label ?? '',
+    );
+  }
+
   Future<void> setMaxRecordingMinutes(int minutes) async {
     await getIt<SharedPreferences>().setInt(AppConstants.maxRecordingMinutesKey, minutes);
     final currentState = state.value;
@@ -203,12 +273,17 @@ class SettingsController extends _$SettingsController {
     // Run checks independently of current state loading status
     final isAccessibility = await _checkAccessibility();
     final isMicrophone = await AudioRecorder().hasPermission();
+    // 藍牙裝置可能在 app 執行期間才連上，每次開設定頁重抓
+    final devices = await _loadDevices();
 
     final currentState = state.value;
     if (currentState != null) {
       state = AsyncData(currentState.copyWith(
         isAccessibilityAuthorized: isAccessibility,
         isMicrophoneAuthorized: isMicrophone,
+        inputDevices: devices.list,
+        defaultDeviceLabel: devices.defaultLabel,
+        defaultCommsDeviceLabel: devices.commsLabel,
       ));
     } else {
       // State is still loading (initial build not done yet);

@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:record/record.dart';
 import 'package:zero_type/core/di/injection.dart';
 import 'package:zero_type/core/services/app_lifecycle.dart';
 import 'package:zero_type/core/services/sound_service.dart';
@@ -211,11 +212,141 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                       loading: () => const _LoadingTile(),
                       error: (_, __) => const SizedBox.shrink(),
                     ),
+                    const Divider(height: 1, indent: 56),
+                    // Input Device
+                    settings.when(
+                      data: (data) => _InputDeviceTile(
+                        selectedId: data.inputDeviceId,
+                        devices: data.inputDevices,
+                        defaultLabel: data.defaultDeviceLabel,
+                        commsLabel: data.defaultCommsDeviceLabel,
+                        onChanged: (id) => ref
+                            .read(settingsControllerProvider.notifier)
+                            .setInputDeviceId(id),
+                      ),
+                      loading: () => const _LoadingTile(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    // Record Warmup（藍牙 HFP 協商期間的靜音）
+                    settings.when(
+                      data: (data) => _SettingTile(
+                        icon: Icons.hourglass_bottom,
+                        title: '等待麥克風就緒',
+                        subtitle: '只給藍牙耳機麥克風用，其他麥克風請設 0。'
+                            '藍牙開頭有數秒是空的（Windows 切換通話模式，實測 1.5~9 秒不等），'
+                            '開啟後會等到真的有聲音才開始收音，提示音也改在那一刻響。'
+                            '這裡設的是最長等多久，等不到就照樣開始',
+                        trailing: SizedBox(
+                          width: 200,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 140,
+                                child: Slider(
+                                  // 實測藍牙 HFP 協商最久吃掉 6 秒，保險絲給到 8 秒
+                                  value: data.recordWarmupMs
+                                      .clamp(0, 8000)
+                                      .toDouble(),
+                                  min: 0,
+                                  max: 8000,
+                                  divisions: 16,
+                                  onChanged: (val) => ref
+                                      .read(settingsControllerProvider.notifier)
+                                      .setRecordWarmupMs(val.round()),
+                                ),
+                              ),
+                              Text(
+                                data.recordWarmupMs == 0
+                                    ? '關閉'
+                                    : '${(data.recordWarmupMs / 1000).toStringAsFixed(1)} 秒',
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      loading: () => const _LoadingTile(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    // Noise Gate
+                    settings.when(
+                      data: (data) => _SettingTile(
+                        icon: Icons.graphic_eq,
+                        title: '濾除背景噪音',
+                        subtitle: '把明顯低於環境噪音底的片段壓下去，適合底噪偏大的麥克風',
+                        trailing: Switch(
+                          value: data.noiseGateEnabled,
+                          onChanged: (val) => ref
+                              .read(settingsControllerProvider.notifier)
+                              .toggleNoiseGate(val),
+                        ),
+                      ),
+                      loading: () => const _LoadingTile(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
+                    // Noise Gate Strength（關掉時整條隱藏，沒作用的旋鈕不必顯示）
+                    settings.when(
+                      data: (data) => data.noiseGateEnabled
+                          ? Column(
+                              children: [
+                                const Divider(height: 1, indent: 56),
+                                _SettingTile(
+                                  icon: Icons.tune,
+                                  title: '濾除強度',
+                                  subtitle: '門檻 = 環境噪音底 × 強度。數值越大濾得越乾淨，'
+                                      '太大會連氣音和小聲的字一起吃掉（預設 3.0）',
+                                  trailing: SizedBox(
+                                    width: 200,
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        SizedBox(
+                                          width: 140,
+                                          child: Slider(
+                                            value: data.noiseGateStrength
+                                                .clamp(1.5, 6.0),
+                                            min: 1.5,
+                                            max: 6.0,
+                                            divisions: 9,
+                                            onChanged: (val) => ref
+                                                .read(settingsControllerProvider
+                                                    .notifier)
+                                                .setNoiseGateStrength(val),
+                                          ),
+                                        ),
+                                        Text(
+                                          data.noiseGateStrength
+                                              .toStringAsFixed(1),
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            color: Theme.of(context)
+                                                .colorScheme
+                                                .primary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : const SizedBox.shrink(),
+                      loading: () => const SizedBox.shrink(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
                   ],
                 ),
-                
+
                 const SizedBox(height: 32),
-                
+
                 // --- Shortcut Section ---
                 _SectionHeader(title: '快捷鍵'),
                 const SizedBox(height: 12),
@@ -777,8 +908,12 @@ class _SettingTile extends StatelessWidget {
                 Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
                 Text(
                   subtitle,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                  // 說明文字原本吃 bodySmall(12sp)，太小；寫死尺寸不靠主題級距，
+                  // 12→14 的差距肉眼看不出來
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        fontSize: 15,
+                        height: 1.4,
+                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                       ),
                 ),
               ],
@@ -860,6 +995,89 @@ class _LoadingTile extends StatelessWidget {
     return const Padding(
       padding: EdgeInsets.all(20),
       child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+    );
+  }
+}
+
+class _InputDeviceTile extends StatelessWidget {
+  /// 空字串 = 系統預設
+  final String selectedId;
+  final List<InputDevice> devices;
+  final String defaultLabel;
+  final String commsLabel;
+  final ValueChanged<String> onChanged;
+
+  const _InputDeviceTile({
+    required this.selectedId,
+    required this.devices,
+    required this.defaultLabel,
+    required this.commsLabel,
+    required this.onChanged,
+  });
+
+  /// 選「系統預設」時要講清楚那到底是哪一支，不然使用者看不出自己在用藍牙麥克風
+  String get _subtitle {
+    const base = '藍牙耳機麥克風會使耳機切到通話模式（提示音被吃掉、開頭靜音、底噪變大），可改用其他麥克風';
+    if (selectedId.isNotEmpty) return base;
+    if (defaultLabel.isEmpty && commsLabel.isEmpty) return base;
+    if (commsLabel.isEmpty || commsLabel == defaultLabel) {
+      return '目前的系統預設是「$defaultLabel」。$base';
+    }
+    return '系統預設「$defaultLabel」，預設通訊裝置「$commsLabel」—— '
+        '兩者不同時實際用哪一支由 Windows 決定，建議直接指定。$base';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    // 存的裝置已不存在（拔除／藍牙斷線）就顯示系統預設，錄音端也會自動退回
+    final effectiveId =
+        devices.any((d) => d.id == selectedId) ? selectedId : '';
+    final labels = <String, String>{
+      '': '系統預設',
+      for (final d in devices) d.id: d.label,
+    };
+
+    return _SettingTile(
+      icon: Icons.mic_none,
+      title: '錄音輸入裝置',
+      subtitle: _subtitle,
+      trailing: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 240),
+        child: DropdownButton<String>(
+          value: effectiveId,
+          isExpanded: true,
+          underline: const SizedBox.shrink(),
+          borderRadius: BorderRadius.circular(12),
+          selectedItemBuilder: (_) => labels.values.map((label) {
+            return Align(
+              alignment: Alignment.centerRight,
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                  color: cs.onSurface,
+                ),
+              ),
+            );
+          }).toList(),
+          items: labels.entries.map((e) {
+            return DropdownMenuItem<String>(
+              value: e.key,
+              child: Text(
+                e.value,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 13),
+              ),
+            );
+          }).toList(),
+          onChanged: (id) {
+            if (id != null) onChanged(id);
+          },
+        ),
+      ),
     );
   }
 }

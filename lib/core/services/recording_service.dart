@@ -1,20 +1,246 @@
 import 'dart:async';
+import 'dart:ffi';
 import 'dart:io';
+import 'dart:math';
+import 'dart:typed_data';
 
+import 'package:ffi/ffi.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
+import 'package:win32/win32.dart';
+
+/// Whisper 系列模型的原生取樣率，送更高的沒有好處只是變大包
+const int kRecordSampleRate = 16000;
+
+/// 噪音門檻的分析音框長度
+const int _kFrameMs = 20;
+
+/// 噪音門檻強度預設值，見 [applyNoiseGate] 的 marginFactor
+const double kDefaultNoiseGateStrength = 3.0;
 
 typedef AmplitudeCallback = void Function(double amplitude);
+
+/// Windows 目前預設錄音裝置的 endpoint id。
+///
+/// 「預設裝置」(eConsole) 和「預設通訊裝置」(eCommunications) 可以是不同的兩支麥克風 ——
+/// 藍牙耳機常常只被指定成通訊裝置，所以兩個都回傳，由 UI 自己決定怎麼呈現。
+/// 回傳的 id 跟 `listInputDevices()` 的 `InputDevice.id` 是同一組（都是 MMDevice endpoint id）。
+///
+/// notes: 只做 Windows；其他平台回 (null, null)，設定頁就只顯示「系統預設」。
+({String? console, String? communications}) defaultInputDeviceIds() {
+  if (!Platform.isWindows) return (console: null, communications: null);
+  const eCapture = 1;
+  const eConsole = 0;
+  const eCommunications = 2;
+
+  try {
+    // COM 已由 windows/runner/main.cpp 的 CoInitializeEx 初始化過
+    final enumerator = MMDeviceEnumerator.createInstance();
+
+    String? idForRole(int role) {
+      // win32 的慣例：配置一個 COMObject 當出參槽位，再直接包那個指標（不是 .value）
+      final ppDevice = calloc<COMObject>();
+      if (FAILED(
+        enumerator.getDefaultAudioEndpoint(eCapture, role, ppDevice.cast()),
+      )) {
+        calloc.free(ppDevice); // 沒包成 IMMDevice，沒有 Finalizer 會來收
+        return null; // 沒有可用的錄音裝置
+      }
+
+      // 包成 IUnknown 子類之後，記憶體與 refcount 由 win32 的 Finalizer 負責。
+      // 這裡再自己 release()／free() 就是雙重釋放，會在之後某次 GC 讓整個程序無聲崩掉。
+      final device = IMMDevice(ppDevice);
+      final ppId = calloc<Pointer<Utf16>>();
+      try {
+        if (FAILED(device.getId(ppId))) return null;
+        final id = ppId.value.toDartString();
+        CoTaskMemFree(ppId.value.cast()); // 字串是 COM 配的，這個要自己還
+        return id;
+      } finally {
+        calloc.free(ppId);
+      }
+    }
+
+    return (
+      console: idForRole(eConsole),
+      communications: idForRole(eCommunications),
+    );
+  } catch (e) {
+    print('[RecordingService] defaultInputDeviceIds failed: $e');
+    return (console: null, communications: null);
+  }
+}
+
+/// 一段 PCM16 的 RMS。chunk 可能落在奇數 byte offset，所以用 ByteData 讀。
+double rmsOfPcm16(Uint8List pcm) {
+  final count = pcm.lengthInBytes ~/ 2;
+  if (count == 0) return 0;
+  final bd = ByteData.sublistView(pcm);
+  var sum = 0.0;
+  for (var i = 0; i < count; i++) {
+    final s = bd.getInt16(i * 2, Endian.little);
+    sum += s * s.toDouble();
+  }
+  return sqrt(sum / count);
+}
+
+/// 藍牙 HFP 協商期間麥克風送的是數位靜音（實測 RMS 0~7），
+/// 接通後就算沒人講話也有底噪（實測 200 以上）。20 落在中間，兩邊都有一個數量級的餘裕。
+///
+/// notes: 門檻寫死，而且注定顧不了兩邊 —— 實測筆電內建麥克風的底噪只有 5~9，
+/// 跟藍牙協商期的靜音（0~7）重疊。對這種低底噪麥克風，「偵測到聲音」等於「使用者開口了」，
+/// 所以等待麥克風就緒只該對藍牙開啟，其他裝置設 0（設定頁的說明有寫）。
+const double kSilentChunkRms = 20;
+
+/// 要連續多久不靜音才算麥克風真的活了。
+///
+/// 實測 HFP 協商快完成時會有一下爆音：單一 chunk 衝過門檻，接著又靜音一整秒。
+/// 只看一個 chunk 會誤判，提示音提早響，使用者的頭幾個字還是掉在死區裡。
+const Duration kMicReadyHold = Duration(milliseconds: 300);
+
+/// 判斷麥克風是否已經真的在送聲音（藍牙 HFP 協商完成的偵測）。
+///
+/// 抽成一個類別純粹是為了能測 —— 這段判斷藏在 stream listener 裡已經錯過兩次。
+class MicReadyGate {
+  MicReadyGate({required this.deadline, this.hold = kMicReadyHold});
+
+  /// 等不到就放行的保險絲
+  final DateTime deadline;
+  final Duration hold;
+
+  /// 已經累積、但還沒確認的候選片段。就緒時要補進錄音，否則開頭會被自己吃掉。
+  final List<Uint8List> pending = [];
+  DateTime? _loudSince;
+
+  /// 回 true 代表就緒；此時 [chunk] 已經放進 [pending]，呼叫端直接倒出來即可。
+  bool accept(Uint8List chunk, DateTime now) {
+    final loud = rmsOfPcm16(chunk) >= kSilentChunkRms;
+    if (loud) {
+      _loudSince ??= now;
+      pending.add(chunk);
+    } else {
+      // 中途斷掉就重算，爆音不能累積成 300ms
+      _loudSince = null;
+      pending.clear();
+    }
+
+    final held = _loudSince != null && now.difference(_loudSince!) >= hold;
+    if (!held && now.isBefore(deadline)) return false;
+
+    if (!loud) pending.add(chunk); // 逾時放行：這個 chunk 還沒進候選
+    return true;
+  }
+}
+
+/// 從 [devices] 找出 [deviceId] 指定的裝置。
+/// 回 null 代表用系統預設 —— 沒指定，或指定的裝置已拔除／藍牙已斷線。
+InputDevice? resolveInputDevice(List<InputDevice> devices, String? deviceId) {
+  if (deviceId == null || deviceId.isEmpty) return null;
+  for (final d in devices) {
+    if (d.id == deviceId) return d;
+  }
+  return null;
+}
+
+/// 把 PCM16 加上 44 bytes 的 WAV header。
+Uint8List buildWav(
+  Uint8List pcm, {
+  int sampleRate = kRecordSampleRate,
+  int channels = 1,
+}) {
+  const bitsPerSample = 16;
+  final byteRate = sampleRate * channels * bitsPerSample ~/ 8;
+  final blockAlign = channels * bitsPerSample ~/ 8;
+
+  final out = BytesBuilder();
+  final header = ByteData(44);
+  void ascii(int offset, String s) {
+    for (var i = 0; i < s.length; i++) {
+      header.setUint8(offset + i, s.codeUnitAt(i));
+    }
+  }
+
+  ascii(0, 'RIFF');
+  header.setUint32(4, 36 + pcm.length, Endian.little);
+  ascii(8, 'WAVE');
+  ascii(12, 'fmt ');
+  header.setUint32(16, 16, Endian.little); // PCM fmt chunk 大小
+  header.setUint16(20, 1, Endian.little); // 1 = PCM
+  header.setUint16(22, channels, Endian.little);
+  header.setUint32(24, sampleRate, Endian.little);
+  header.setUint32(28, byteRate, Endian.little);
+  header.setUint16(32, blockAlign, Endian.little);
+  header.setUint16(34, bitsPerSample, Endian.little);
+  ascii(36, 'data');
+  header.setUint32(40, pcm.length, Endian.little);
+
+  out.add(header.buffer.asUint8List());
+  out.add(pcm);
+  return out.takeBytes();
+}
+
+/// 噪音門檻：把明顯屬於底噪的音框壓下去。
+///
+/// 門檻取「音框 RMS 的第 10 百分位（噪音底）× [marginFactor]」，不是整段平均值 ——
+/// 以人聲為主的錄音平均值本身就落在人聲區，拿它當門檻會把氣音和句尾整段吃掉。
+///
+/// notes: 固定衰減沒有 attack/release 包絡，門檻邊緣可能有輕微頓挫；
+/// 若聽得出來再改成音框間線性內插增益。
+Uint8List applyNoiseGate(
+  Uint8List pcm, {
+  int sampleRate = kRecordSampleRate,
+  double marginFactor = kDefaultNoiseGateStrength,
+  double attenuation = 0.1,
+}) {
+  final frameSamples = sampleRate * _kFrameMs ~/ 1000;
+  final totalSamples = pcm.lengthInBytes ~/ 2;
+  if (totalSamples < frameSamples * 2) return pcm;
+
+  // 同 _emitAmplitude：串流 chunk 可能落在奇數 offset。錄音只有單一 chunk 時
+  // BytesBuilder.takeBytes() 會原樣回傳它，Int16List.view 就會拋 RangeError。
+  final aligned = pcm.offsetInBytes.isEven ? pcm : Uint8List.fromList(pcm);
+  final samples = Int16List.fromList(
+    Int16List.view(aligned.buffer, aligned.offsetInBytes, totalSamples),
+  );
+
+  final frameCount = totalSamples ~/ frameSamples;
+  final rms = List<double>.filled(frameCount, 0);
+  for (var f = 0; f < frameCount; f++) {
+    var sum = 0.0;
+    final start = f * frameSamples;
+    for (var i = start; i < start + frameSamples; i++) {
+      sum += samples[i] * samples[i].toDouble();
+    }
+    rms[f] = sqrt(sum / frameSamples);
+  }
+
+  final sorted = List<double>.from(rms)..sort();
+  // 用 (n-1) 而不是 n 取名次：短錄音（或幾乎沒有停頓的錄音）只有一兩個安靜音框時，
+  // n×0.1 會落到人聲上，門檻被人聲拉高就會反過來吃掉小聲的字。
+  final noiseFloor = sorted[((sorted.length - 1) * 0.1).floor()];
+  // 下限擋住「整段幾乎數位靜音」時門檻歸零、什麼都過得去的情況
+  final threshold = max(noiseFloor * marginFactor, 1.0);
+
+  for (var f = 0; f < frameCount; f++) {
+    if (rms[f] >= threshold) continue;
+    final start = f * frameSamples;
+    for (var i = start; i < start + frameSamples; i++) {
+      samples[i] = (samples[i] * attenuation).round();
+    }
+  }
+  return samples.buffer.asUint8List();
+}
 
 class RecordingService {
   RecordingService() : _recorder = AudioRecorder();
 
   final AudioRecorder _recorder;
   String? _currentFilePath;
-  // Use a stream subscription instead of a manual timer + getAmplitude() polling.
-  // The manual timer approach caused a deadlock on macOS: in-flight getAmplitude()
-  // MethodChannel calls would block stop() on the native side indefinitely.
-  StreamSubscription<Amplitude>? _amplitudeSubscription;
+  StreamSubscription<Uint8List>? _streamSubscription;
+  BytesBuilder? _pcm;
+  bool _noiseGate = false;
+  double _noiseGateStrength = kDefaultNoiseGateStrength;
+  DateTime _lastAmplitudeAt = DateTime.fromMillisecondsSinceEpoch(0);
 
   Future<bool> checkPermission() async {
     return _recorder.hasPermission();
@@ -25,67 +251,151 @@ class RecordingService {
     return _recorder.hasPermission();
   }
 
-  Future<void> startRecording({AmplitudeCallback? onAmplitude}) async {
+  /// 系統可用的錄音輸入裝置；失敗時回空清單（設定頁只會顯示「系統預設」）
+  Future<List<InputDevice>> listInputDevices() async {
+    try {
+      return await _recorder.listInputDevices();
+    } catch (e) {
+      print('[RecordingService] listInputDevices failed: $e');
+      return const [];
+    }
+  }
+
+  Future<void> startRecording({
+    AmplitudeCallback? onAmplitude,
+    String? deviceId,
+    bool noiseGate = false,
+    double noiseGateStrength = kDefaultNoiseGateStrength,
+    Duration warmupTimeout = Duration.zero,
+    /// 真正開始收音的那一刻（提示音在這裡響，才是「可以講了」）
+    void Function()? onCaptureStart,
+  }) async {
     final dir = await getTemporaryDirectory();
     // The sandbox cache dir may not exist when app-sandbox is disabled in debug.
-    // Creating it ensures AVAudioRecorder can actually write the file.
+    // Creating it ensures the output file can actually be written.
     if (!dir.existsSync()) {
       dir.createSync(recursive: true);
     }
     final timestamp = DateTime.now().millisecondsSinceEpoch;
-    _currentFilePath = '${dir.path}/zerotype_$timestamp.m4a';
+    _currentFilePath = '${dir.path}/zerotype_$timestamp.wav';
+    _noiseGate = noiseGate;
+    _noiseGateStrength = noiseGateStrength;
 
-    print('[RecordingService] starting at $_currentFilePath');
-    await _recorder.start(
-      RecordConfig(
-        encoder: AudioEncoder.aacLc,
-        bitRate: 128000,
-        // Windows Media Foundation 的 AAC 編碼器只支援 44.1/48 kHz，
-        // 16 kHz 會拋 MF_E_INVALIDMEDIATYPE。
-        sampleRate: Platform.isWindows ? 44100 : 16000,
-      ),
-      path: _currentFilePath!,
+    final device = (deviceId == null || deviceId.isEmpty)
+        ? null
+        : resolveInputDevice(await listInputDevices(), deviceId);
+    if (device == null && deviceId != null && deviceId.isNotEmpty) {
+      print('[RecordingService] input device gone, falling back: $deviceId');
+    }
+
+    print(
+      '[RecordingService] starting at $_currentFilePath '
+      '(device: ${device?.label ?? 'default'}, '
+      'gate: $noiseGate x$noiseGateStrength, '
+      'warmupTimeout: ${warmupTimeout.inMilliseconds}ms)',
     );
 
-    final isRec = await _recorder.isRecording();
-    print('[RecordingService] isRecording after start: $isRec');
+    // 收 PCM 自己寫 WAV，才有機會在送出前套噪音門檻；
+    // 順便擺脫 Windows Media Foundation AAC 編碼器只吃 44.1/48 kHz 的限制。
+    _pcm = BytesBuilder(copy: false);
+    final stream = await _recorder.startStream(
+      RecordConfig(
+        encoder: AudioEncoder.pcm16bits,
+        sampleRate: kRecordSampleRate,
+        numChannels: 1,
+        device: device,
+      ),
+    );
 
-    if (onAmplitude != null) {
-      _amplitudeSubscription = _recorder
-          .onAmplitudeChanged(const Duration(milliseconds: 100))
-          .listen((amp) {
-        // Map practical speech range (-50 dBFS silence → -5 dBFS loud) to 0–1
-        final normalized = ((amp.current + 50) / 45).clamp(0.0, 1.0);
-        onAmplitude(normalized);
-      });
+    _lastAmplitudeAt = DateTime.fromMillisecondsSinceEpoch(0);
+    // 藍牙耳機麥克風要等 Windows 把連線從 A2DP 切到 HFP，協商期間送來的是純靜音。
+    // 串流照樣立刻開（協商就是被開麥克風觸發的），只是這段資料丟掉不收。
+    //
+    // 等的是「真的有聲音進來」而不是固定秒數：實測同一支耳機協商時間在 1.5~6.0 秒之間跳，
+    // 固定延遲不是太短就是白等。[warmupTimeout] 只當保險絲，避免麥克風真的沒訊號時無限等。
+    final openedAt = DateTime.now();
+    final gate = warmupTimeout > Duration.zero
+        ? MicReadyGate(deadline: openedAt.add(warmupTimeout))
+        : null;
+    var waiting = gate != null;
+
+    _streamSubscription = stream.listen((chunk) {
+      if (waiting) {
+        if (!gate!.accept(chunk, DateTime.now())) return; // 還在協商，丟掉
+        waiting = false;
+        final waited = DateTime.now().difference(openedAt);
+        print('[RecordingService] capture started after '
+            '${waited.inMilliseconds}ms');
+        onCaptureStart?.call();
+        for (final c in gate.pending) {
+          _pcm?.add(c);
+        }
+        gate.pending.clear();
+        if (onAmplitude != null) _emitAmplitude(chunk, onAmplitude);
+        return; // 這個 chunk 已經在 pending 裡進去了
+      }
+      _pcm?.add(chunk);
+      if (onAmplitude != null) _emitAmplitude(chunk, onAmplitude);
+    }, onError: (Object e) => print('[RecordingService] stream error: $e'));
+  }
+
+  /// 波形用的音量，直接從 PCM 算，不必再走 MethodChannel 輪詢。
+  void _emitAmplitude(Uint8List chunk, AmplitudeCallback onAmplitude) {
+    final now = DateTime.now();
+    if (now.difference(_lastAmplitudeAt).inMilliseconds < 100) return;
+    _lastAmplitudeAt = now;
+
+    final count = chunk.lengthInBytes ~/ 2;
+    if (count == 0) return;
+    // 串流 chunk 是大 buffer 的切片，offsetInBytes 可能是奇數 —— Int16List.view 會拋
+    // RangeError。ByteData.getInt16 沒有對齊限制，也不用複製。
+    final bd = ByteData.sublistView(chunk);
+    var sum = 0.0;
+    for (var i = 0; i < count; i++) {
+      final s = bd.getInt16(i * 2, Endian.little);
+      sum += s * s.toDouble();
     }
+    final rms = sqrt(sum / count);
+    final dbfs = rms <= 0 ? -160.0 : 20 * (log(rms / 32768) / ln10);
+    // Map practical speech range (-50 dBFS silence → -5 dBFS loud) to 0–1
+    onAmplitude(((dbfs + 50) / 45).clamp(0.0, 1.0));
   }
 
   Future<String?> stopRecording() async {
-    // Cancel the stream subscription first — this is clean and non-blocking,
-    // unlike the old timer approach which left getAmplitude() calls in-flight.
-    await _amplitudeSubscription?.cancel();
-    _amplitudeSubscription = null;
+    await _streamSubscription?.cancel();
+    _streamSubscription = null;
 
     final isRec = await _recorder.isRecording();
     print('[RecordingService] calling _recorder.stop()... isRecording=$isRec');
-    if (!isRec) {
-      // Recorder never started (e.g. file path invalid) — skip stop() to avoid hang.
-      print('[RecordingService] recorder not active, skipping stop()');
-      return _currentFilePath;
+    if (isRec) {
+      try {
+        await _recorder.stop().timeout(const Duration(seconds: 8));
+      } catch (e) {
+        print('[RecordingService] _recorder.stop() error/timeout: $e');
+      }
     }
-    try {
-      await _recorder.stop().timeout(const Duration(seconds: 8));
-      print('[RecordingService] _recorder.stop() completed. path=$_currentFilePath');
-    } catch (e) {
-      print('[RecordingService] _recorder.stop() error/timeout: $e');
+
+    final pcm = _pcm?.takeBytes() ?? Uint8List(0);
+    _pcm = null;
+    if (pcm.isEmpty || _currentFilePath == null) {
+      print('[RecordingService] no audio captured');
+      return null;
     }
+
+    final processed = _noiseGate
+        ? applyNoiseGate(pcm, marginFactor: _noiseGateStrength)
+        : pcm;
+    await File(_currentFilePath!).writeAsBytes(buildWav(processed));
+    print(
+      '[RecordingService] wrote ${pcm.length} bytes PCM → $_currentFilePath',
+    );
     return _currentFilePath;
   }
 
   Future<void> cancelRecording() async {
-    await _amplitudeSubscription?.cancel();
-    _amplitudeSubscription = null;
+    await _streamSubscription?.cancel();
+    _streamSubscription = null;
+    _pcm = null;
 
     final isRec = await _recorder.isRecording();
     if (isRec) {
