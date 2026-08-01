@@ -48,6 +48,8 @@ class DictionaryRepositoryImpl implements DictionaryRepository {
   Future<String> buildDictionaryPrompt() async {
     final words = await loadWords();
     if (words.isEmpty) return '';
-    return '以下是專有名詞字典，請在辨識時優先參考：\n${words.join('、')}';
+    return '以下是專有名詞字典，僅供修正拼寫：'
+        '當音檔中出現發音相同或相近的詞時，採用字典的寫法；'
+        '音檔中沒有出現的詞，嚴禁自行加入輸出。\n${words.join('、')}';
   }
 }
