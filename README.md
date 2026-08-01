@@ -1,6 +1,8 @@
 # Zero Type
 
 > **這是 fork。** 原作 [nick1ee/ZeroType](https://github.com/nick1ee/ZeroType) 自 2026-03 起未再更新，PR 也無人審查，故另行維護。以下連結與版本紀錄皆以本 repo 為準。
+>
+> **macOS 未經驗證**：目前維護者只有 Windows 環境，之後的 Release 不會附 macOS build，macOS 相關程式碼與說明可能過時。有 Mac 的話歡迎協助測試或發 PR。
 
 > 一個 Vibe Coding 出來的繁體中文語音輸入工具。
 
