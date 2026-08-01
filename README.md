@@ -2,7 +2,7 @@
 
 > **這是 fork。** 原作 [nick1ee/ZeroType](https://github.com/nick1ee/ZeroType) 自 2026-03 起未再更新，PR 也無人審查，故另行維護。以下連結與版本紀錄皆以本 repo 為準。
 >
-> **macOS 未經驗證**：目前維護者只有 Windows 環境，之後的 Release 不會附 macOS build，macOS 相關程式碼與說明可能過時。有 Mac 的話歡迎協助測試或發 PR。
+> **Windows-only**：目前維護者只有 Windows 環境，`macos/` 平台程式碼已於 2026-08 移除（git 歷史可尋回），Release 只提供 Windows build。需要 macOS 支援請回頭參考原作 repo。
 
 > 一個 Vibe Coding 出來的繁體中文語音輸入工具。
 
@@ -41,7 +41,8 @@
 
 ### 📖 自訂字典
 - 可設定個人化的專有名詞字典（人名、品牌、術語）
-- 辨識時優先採用字典用字，確保拼寫正確
+- 採兩段式校正：先純轉錄，再以字典對逐字稿做拼寫校正（發音相同且字數相同才替換），字典詞不會被憑空插入輸出
+- OpenAI（Whisper）路徑例外：字典直接附加於 prompt 作為解碼偏置
 
 ### ⚙️ 設定頁面
 - 深色 / 淺色模式切換
@@ -90,9 +91,10 @@
 git clone https://github.com/DaveTseng2019/ZeroType.git
 cd ZeroType
 flutter pub get
-dart run build_runner build --delete-conflicting-outputs   # 產生 freezed / riverpod / auto_route 程式碼
 flutter run -d windows
 ```
+
+> 專案不使用任何程式碼產生器（無 build_runner），`pub get` 完直接跑。
 
 **正式版建置**
 
@@ -112,11 +114,8 @@ flutter build windows --release
 ```bash
 git pull
 flutter pub get
-dart run build_runner build --delete-conflicting-outputs
 flutter run -d windows      # 或重新 build release
 ```
-
-> 注意：只要 `pubspec.yaml` 或任何 `@freezed` / `@riverpod` / route 相關檔案有變動，就必須重跑 `build_runner`，否則會編譯失敗。
 
 ---
 
@@ -128,6 +127,11 @@ flutter run -d windows      # 或重新 build release
 ---
 
 ## 📜 版本更新紀錄 (Release Notes)
+
+### [未發佈]
+- **字典校正改為兩段式** 📖 — 字典與音訊同時給模型時，模型會把發音相近的詞「自我合理化」而憑空插入字典詞（提示詞措辭怎麼改都壓不住）。改為：先純轉錄（不帶字典），再用第二個純文字請求以「發音相同且字數相同」規則校正拼寫。有設字典時每次辨識多一個輕量請求（約 1 秒、$0.0002）。
+- **架構精簡** 🧹 — 移除 auto_route（改用原生 `IndexedStack`）、get_it（改 top-level 單例）、freezed、整套 build_runner codegen 與 domain/data 分層；刪除無法進入的 TestingPage 與 `macos/` 平台程式碼。lib/ 減少約 19%，依賴 21 → 16 個，改完程式碼直接 build 不需再跑 codegen。
+- **全新圖示** 🎨 — 應用程式與系統匣圖示改為橘底白 Ø 文字符號設計，內嵌 16–256px 多尺寸原生渲染，解決小尺寸模糊問題。
 
 ### [v1.0.4] - 當前版本
 - **獨立維護聲明** 🍴 — 上游 `nick1ee/ZeroType` 自 2026-03 起無更新，本 repo 改為自行維護的正式版本線。

@@ -1,5 +1,7 @@
 # ZeroType — 任務列表
 
+> ⚠️ 歷史文件：記錄初版開發時的任務拆解，其中的技術選型（get_it、auto_route、freezed、build_runner、macOS 支援）已於 2026-08 架構精簡時移除，現況以 README 為準。
+
 > 標記說明：`[前置]` = 此任務必須先完成才能進行後續任務
 
 ---
