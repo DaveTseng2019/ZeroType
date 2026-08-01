@@ -59,12 +59,11 @@
 ## 🔧 使用前準備
 
 ### 系統需求
-- macOS 11.0+ 或 Windows 10/11
+- Windows 10/11
 - Flutter 3.x（如需自行 build）
 
 ### 必要系統授權
 1. **麥克風** — 錄音所需
-2. **輔助使用（Accessibility，僅 macOS）** — 模擬鍵盤輸入（`⌘V` 貼上）所需
 
 ### API Key
 前往以下任一服務申請 API Key：
@@ -78,11 +77,9 @@
 
 ### 方法一：直接下載（推薦）
 
-1. 前往 [Releases](https://github.com/DaveTseng2019/ZeroType/releases) 頁面下載最新版本
-2. macOS：開啟 `.dmg` 並將 **ZeroType.app** 拖入 Applications 資料夾；Windows：直接執行 `zero_type.exe`
-3. 首次執行時，依照提示授予以下權限：
-   - **麥克風** — 語音輸入所需
-   - **輔助使用（Accessibility，macOS）** — 模擬鍵盤貼上所需
+1. 前往 [Releases](https://github.com/DaveTseng2019/ZeroType/releases) 頁面下載最新版本的 zip
+2. 解壓縮後直接執行資料夾內的 `zero_type.exe`（DLL 與 `data` 資料夾需留在同一層）
+3. 首次執行時，依照提示授予**麥克風**權限（語音輸入所需）
 4. 在 App 內的「模型設定」填入你的 API Key，即可開始使用
 
 ### 方法二：從原始碼執行（進階）
@@ -94,16 +91,12 @@ git clone https://github.com/DaveTseng2019/ZeroType.git
 cd ZeroType
 flutter pub get
 dart run build_runner build --delete-conflicting-outputs   # 產生 freezed / riverpod / auto_route 程式碼
-flutter run -d macos      
-# Windows 則用 -d windows
+flutter run -d windows
 ```
 
 **正式版建置**
 
 ```bash
-flutter build macos --release
-# 產物在 build/macos/Build/Products/Release/ZeroType.app
-
 flutter build windows --release
 # 產物在 build\windows\x64\runner\Release\zero_type.exe
 ```
@@ -112,7 +105,7 @@ flutter build windows --release
 
 ## 🔄 更新方式
 
-**一般使用者**：到 [Releases](https://github.com/DaveTseng2019/ZeroType/releases) 下載新版，直接覆蓋舊的 `.app` / `.exe` 即可；或直接在 App 內「設定 → 關於」點「下載更新」。設定與歷史紀錄存放在使用者資料目錄，覆蓋安裝不會遺失。
+**一般使用者**：到 [Releases](https://github.com/DaveTseng2019/ZeroType/releases) 下載新版，直接覆蓋舊的 `.exe` 即可；或直接在 App 內「設定 → 關於」點「下載更新」。設定與歷史紀錄存放在使用者資料目錄，覆蓋安裝不會遺失。
 
 **從原始碼更新**
 
@@ -120,7 +113,7 @@ flutter build windows --release
 git pull
 flutter pub get
 dart run build_runner build --delete-conflicting-outputs
-flutter run -d macos      # 或重新 build release
+flutter run -d windows      # 或重新 build release
 ```
 
 > 注意：只要 `pubspec.yaml` 或任何 `@freezed` / `@riverpod` / route 相關檔案有變動，就必須重跑 `build_runner`，否則會編譯失敗。
