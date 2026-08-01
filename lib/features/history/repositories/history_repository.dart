@@ -3,11 +3,10 @@ import 'dart:io';
 
 import 'package:path_provider/path_provider.dart';
 
-import '../../domain/entities/history_stats.dart';
-import '../../domain/entities/transcription_record.dart';
-import '../../domain/repositories/history_repository.dart';
+import '../entities/history_stats.dart';
+import '../entities/transcription_record.dart';
 
-class HistoryRepositoryImpl implements HistoryRepository {
+class HistoryRepository {
   static const _historyFileName = 'history.json';
   static const _statsFileName = 'history_stats.json';
   static const _audioDirName = 'history_audio';
@@ -32,7 +31,6 @@ class HistoryRepositoryImpl implements HistoryRepository {
     return audioDir;
   }
 
-  @override
   Future<List<TranscriptionRecord>> getRecords() async {
     final file = await _historyFile();
     if (!file.existsSync()) return [];
@@ -57,7 +55,6 @@ class HistoryRepositoryImpl implements HistoryRepository {
     await file.writeAsString(json);
   }
 
-  @override
   Future<void> addRecord(TranscriptionRecord record) async {
     final records = await getRecords();
     // Insert at front (already sorted newest-first from getRecords)
@@ -65,7 +62,6 @@ class HistoryRepositoryImpl implements HistoryRepository {
     await _saveRecords(records);
   }
 
-  @override
   Future<void> deleteRecord(String id) async {
     final records = await getRecords();
     final target = records.firstWhere((r) => r.id == id,
@@ -79,7 +75,6 @@ class HistoryRepositoryImpl implements HistoryRepository {
     await _saveRecords(records);
   }
 
-  @override
   Future<void> clearAll() async {
     final records = await getRecords();
     for (final r in records) {
@@ -100,7 +95,6 @@ class HistoryRepositoryImpl implements HistoryRepository {
     await resetStats();
   }
 
-  @override
   Future<void> purgeExpiredRecords(int retentionDays) async {
     final cutoff =
         DateTime.now().subtract(Duration(days: retentionDays));
@@ -119,7 +113,6 @@ class HistoryRepositoryImpl implements HistoryRepository {
     print('[HistoryRepository] Purged ${expired.length} expired records.');
   }
 
-  @override
   Future<String?> moveAudioFile(String srcPath) async {
     final srcFile = File(srcPath);
     if (!srcFile.existsSync()) return null;
@@ -138,7 +131,6 @@ class HistoryRepositoryImpl implements HistoryRepository {
     return destPath;
   }
 
-  @override
   Future<HistoryStats> getStats() async {
     final file = await _statsFile();
     if (!file.existsSync()) return HistoryStats.zero;
@@ -150,7 +142,6 @@ class HistoryRepositoryImpl implements HistoryRepository {
     }
   }
 
-  @override
   Future<void> accumulateStats(TranscriptionRecord record) async {
     final current = await getStats();
     final updated = current.addRecord(record.costUsd);
@@ -158,7 +149,6 @@ class HistoryRepositoryImpl implements HistoryRepository {
     await file.writeAsString(jsonEncode(updated.toJson()));
   }
 
-  @override
   Future<void> resetStats() async {
     final file = await _statsFile();
     if (file.existsSync()) await file.delete();

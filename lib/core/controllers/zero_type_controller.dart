@@ -3,25 +3,21 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:zero_type/core/constants/model_pricing.dart';
 import 'package:zero_type/core/constants/app_constants.dart';
 import 'package:zero_type/core/di/injection.dart';
 import 'package:zero_type/core/services/recording_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:zero_type/core/services/sound_service.dart';
 import 'package:zero_type/core/services/speech_recognition_service.dart';
 import 'package:zero_type/core/state/zero_type_state.dart';
-import 'package:zero_type/features/history/domain/entities/transcription_record.dart';
-import 'package:zero_type/features/history/domain/repositories/history_repository.dart';
+import 'package:zero_type/features/history/entities/transcription_record.dart';
 import 'package:zero_type/features/model_config/presentation/controllers/model_config_controller.dart';
 import 'package:zero_type/features/prompt/presentation/controllers/prompt_controller.dart';
 import 'package:zero_type/features/dictionary/presentation/controllers/dictionary_controller.dart';
 
-part 'zero_type_controller.g.dart';
+final zeroTypeControllerProvider =
+    NotifierProvider<ZeroTypeController, ZeroTypeState>(ZeroTypeController.new);
 
-@Riverpod(keepAlive: true)
-class ZeroTypeController extends _$ZeroTypeController {
+class ZeroTypeController extends Notifier<ZeroTypeState> {
   late final RecordingService _recordingService;
   bool _cancelled = false;
   DateTime? _recordingStartTime;
@@ -63,8 +59,8 @@ class ZeroTypeController extends _$ZeroTypeController {
       unawaited(_showNativeOverlay('cancelling', '取消中'));
       await _recordingService.cancelRecording();
     }
-    await getIt<SoundService>().playCancelSound();
-    await getIt<SoundService>().resumeMusic();
+    await soundService.playCancelSound();
+    await soundService.resumeMusic();
     state = const ZeroTypeState();
     await _hideNativeOverlay();
   }
@@ -77,7 +73,7 @@ class ZeroTypeController extends _$ZeroTypeController {
         config.apiKey == null || config.apiKey!.isEmpty ||
         config.modelId == null || config.modelId!.isEmpty) {
       await _showNativeOverlay('error', '請先完成語音辨識模型設定');
-      await getIt<SoundService>().playCancelSound();
+      await soundService.playCancelSound();
       await Future.delayed(const Duration(seconds: 3));
       if (ref.mounted && !_cancelled) {
         state = const ZeroTypeState();
@@ -105,7 +101,7 @@ class ZeroTypeController extends _$ZeroTypeController {
     if (!ref.mounted || _cancelled) return;
     if (!isAccessibilityOk) {
       await _showNativeOverlay('error', '請先授權輔助使用權限');
-      await getIt<SoundService>().playCancelSound();
+      await soundService.playCancelSound();
       await Future.delayed(const Duration(seconds: 3));
       if (ref.mounted && !_cancelled) {
         state = const ZeroTypeState();
@@ -115,7 +111,7 @@ class ZeroTypeController extends _$ZeroTypeController {
     }
     if (!hasPermission) {
       await _showNativeOverlay('error', '請先授權麥克風權限');
-      await getIt<SoundService>().playCancelSound();
+      await soundService.playCancelSound();
       await Future.delayed(const Duration(seconds: 3));
       if (ref.mounted && !_cancelled) {
         state = const ZeroTypeState();
@@ -128,13 +124,13 @@ class ZeroTypeController extends _$ZeroTypeController {
     // 提早播只會在藍牙切 HFP 的當下被吃掉，等於沒有提示。
     final warmupTimeout = Duration(
       milliseconds:
-          getIt<SharedPreferences>().getInt(AppConstants.recordWarmupMsKey) ?? 0,
+          appPrefs.getInt(AppConstants.recordWarmupMsKey) ?? 0,
     );
 
     // [優化2] 音效不阻塞錄音啟動
-    unawaited(getIt<SoundService>().pauseMusic());
+    unawaited(soundService.pauseMusic());
     if (warmupTimeout == Duration.zero) {
-      unawaited(getIt<SoundService>().playStartSound());
+      unawaited(soundService.playStartSound());
 
       // Windows 開啟音訊擷取會壓掉正在播的開始音，先給音效一點頭段
       if (Platform.isWindows) {
@@ -147,7 +143,7 @@ class ZeroTypeController extends _$ZeroTypeController {
     _recordingStartTime = DateTime.now();
 
     // Start max-duration safety timer from user setting (default 1 min, max 5 min)
-    final maxMinutes = getIt<SharedPreferences>()
+    final maxMinutes = appPrefs
         .getInt(AppConstants.maxRecordingMinutesKey) ?? 1;
     _maxDurationTimer = Timer(Duration(minutes: maxMinutes), () {
       if (state.status == ZeroTypeStatus.recording) {
@@ -161,18 +157,18 @@ class ZeroTypeController extends _$ZeroTypeController {
       await Future.wait([
         _showNativeOverlay('recording', '錄音中'),
         _recordingService.startRecording(
-          deviceId: getIt<SharedPreferences>()
+          deviceId: appPrefs
               .getString(AppConstants.inputDeviceIdKey),
-          noiseGate: getIt<SharedPreferences>()
+          noiseGate: appPrefs
                   .getBool(AppConstants.noiseGateEnabledKey) ??
               false,
-          noiseGateStrength: getIt<SharedPreferences>()
+          noiseGateStrength: appPrefs
                   .getDouble(AppConstants.noiseGateStrengthKey) ??
               kDefaultNoiseGateStrength,
           warmupTimeout: warmupTimeout,
           onCaptureStart: () {
             if (ref.mounted && !_cancelled) {
-              unawaited(getIt<SoundService>().playStartSound());
+              unawaited(soundService.playStartSound());
             }
           },
           onAmplitude: (amp) {
@@ -202,8 +198,7 @@ class ZeroTypeController extends _$ZeroTypeController {
   Future<TranscriptionResult?> _transcribe(String filePath) async {
     final config = await ref.read(speechProviderControllerProvider.future);
     final prompt = await ref.read(speechPromptControllerProvider.future);
-    final dictionaryPrompt =
-        await ref.read(dictionaryRepositoryProvider).buildDictionaryPrompt();
+    final dictionaryRepo = ref.read(dictionaryRepositoryProvider);
 
     if (config.providerId == null ||
         config.apiKey == null ||
@@ -211,11 +206,17 @@ class ZeroTypeController extends _$ZeroTypeController {
       throw Exception('請先完成語音辨識模型設定');
     }
 
+    // notes: 字典跟音訊放同一個 context 會讓模型憑空插入字典詞（見
+    // buildCorrectionPrompt 的說明）；chat 型服務商改成轉錄後第二段純文字校正，
+    // 只有 whisper（openai）維持 prompt 偏置附加
+    final isWhisper = config.providerId == 'openai';
+    final dictionaryPrompt =
+        isWhisper ? await dictionaryRepo.buildDictionaryPrompt() : '';
     final finalPrompt =
         dictionaryPrompt.isEmpty ? prompt : '$prompt\n\n$dictionaryPrompt';
 
-    final service = getIt<SpeechRecognitionService>();
-    return service.transcribe(
+    final service = speechService;
+    final result = await service.transcribe(
       audioFilePath: filePath,
       apiKey: config.apiKey!,
       provider: config.providerId!,
@@ -223,7 +224,33 @@ class ZeroTypeController extends _$ZeroTypeController {
       prompt: finalPrompt,
       customEndpoint: config.customEndpoint,
     );
+
+    if (isWhisper || result.text.isEmpty) return result;
+    final correctionPrompt = await dictionaryRepo.buildCorrectionPrompt();
+    if (correctionPrompt.isEmpty) return result;
+
+    try {
+      final corrected = await service.correctTranscript(
+        apiKey: config.apiKey!,
+        provider: config.providerId!,
+        model: config.modelId!,
+        prompt: '$correctionPrompt${result.text}',
+        customEndpoint: config.customEndpoint,
+      );
+      if (corrected.text.isEmpty) return result;
+      return (
+        text: corrected.text,
+        inputTokens: _sumTokens(result.inputTokens, corrected.inputTokens),
+        outputTokens: _sumTokens(result.outputTokens, corrected.outputTokens),
+      );
+    } catch (e) {
+      // notes: 校正失敗不能吃掉逐字稿，退回第一段結果
+      print('[ZeroType] Dictionary correction failed, using raw transcript: $e');
+      return result;
+    }
   }
+
+  int? _sumTokens(int? a, int? b) => a == null ? b : a + (b ?? 0);
 
   Future<void> _stopAndProcess() async {
     _maxDurationTimer?.cancel();
@@ -238,8 +265,8 @@ class ZeroTypeController extends _$ZeroTypeController {
 
     try {
       final stopFuture = _recordingService.stopRecording();
-      final soundFuture = getIt<SoundService>().playStopSound();
-      getIt<SoundService>().resumeMusic();
+      final soundFuture = soundService.playStopSound();
+      soundService.resumeMusic();
 
       final filePath = await stopFuture;
       await soundFuture;
@@ -263,7 +290,7 @@ class ZeroTypeController extends _$ZeroTypeController {
       }
 
       // Move audio to history dir and save record
-      final historyRepo = getIt<HistoryRepository>();
+      final historyRepo = historyRepository;
       final audioHistoryPath = await historyRepo.moveAudioFile(filePath);
 
       final recordId = DateTime.now().millisecondsSinceEpoch.toString();
@@ -310,7 +337,7 @@ class ZeroTypeController extends _$ZeroTypeController {
         errorMessage: e.toString(),
       );
       await _showNativeOverlay('error', '處理失敗：$e');
-      await getIt<SoundService>().resumeMusic();
+      await soundService.resumeMusic();
       await Future.delayed(const Duration(seconds: 3));
       if (ref.mounted && !_cancelled) {
         state = const ZeroTypeState();

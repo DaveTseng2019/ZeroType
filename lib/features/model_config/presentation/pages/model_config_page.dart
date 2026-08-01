@@ -1,11 +1,9 @@
-import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zero_type/core/constants/model_pricing.dart';
 import '../controllers/model_config_controller.dart';
-import '../../domain/entities/ai_provider.dart';
+import '../../entities/ai_provider.dart';
 
-@RoutePage()
 class ModelConfigPage extends ConsumerWidget {
   const ModelConfigPage({super.key});
 

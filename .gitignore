@@ -199,3 +199,8 @@ xcuserdata/
 **/xcshareddata/WorkspaceSettings.xcsettings
 
 # End of https://www.toptal.com/developers/gitignore/api/flutter,dart,darteditor,visualstudiocode,windows,macos,xcode
+# IDE
+.idea/
+
+# Flutter 工具會自動再生 macos/ ephemeral，此 fork 為 Windows-only
+macos/

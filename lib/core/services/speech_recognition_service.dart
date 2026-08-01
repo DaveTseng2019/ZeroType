@@ -273,4 +273,84 @@ class SpeechRecognitionService {
       rethrow;
     }
   }
+
+  /// 純文字第二段：轉錄完成後用字典校正拼寫。
+  /// 只支援 chat 型服務商（gemini／openrouter）；openai 走 whisper prompt 偏置。
+  Future<TranscriptionResult> correctTranscript({
+    required String apiKey,
+    required String provider,
+    required String model,
+    required String prompt,
+    String? customEndpoint,
+  }) async {
+    switch (provider) {
+      case 'gemini':
+        final url = (customEndpoint != null && customEndpoint.isNotEmpty)
+            ? '$customEndpoint/$model:generateContent'
+            : 'https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent';
+        final response = await _dio.post<Map<String, dynamic>>(
+          url,
+          data: {
+            'contents': [
+              {
+                'parts': [
+                  {'text': prompt},
+                ],
+              },
+            ],
+          },
+          options: Options(
+            headers: {
+              'x-goog-api-key': apiKey,
+              'Content-Type': 'application/json',
+            },
+          ),
+        );
+        final candidates = response.data?['candidates'] as List?;
+        final parts = (candidates != null && candidates.isNotEmpty)
+            ? (candidates[0]['content']?['parts'] as List?)
+            : null;
+        final text = (parts != null && parts.isNotEmpty)
+            ? (parts[0]['text'] as String? ?? '').trim()
+            : '';
+        final usageMeta =
+            response.data?['usageMetadata'] as Map<String, dynamic>?;
+        return (
+          text: text,
+          inputTokens: usageMeta?['promptTokenCount'] as int?,
+          outputTokens: usageMeta?['candidatesTokenCount'] as int?,
+        );
+      case 'openrouter':
+        final url = (customEndpoint != null && customEndpoint.isNotEmpty)
+            ? customEndpoint
+            : 'https://openrouter.ai/api/v1/chat/completions';
+        final response = await _dio.post<Map<String, dynamic>>(
+          url,
+          data: {
+            'model': model,
+            'messages': [
+              {'role': 'user', 'content': prompt},
+            ],
+          },
+          options: Options(
+            headers: {
+              'Authorization': 'Bearer $apiKey',
+              'Content-Type': 'application/json',
+            },
+          ),
+        );
+        final choices = response.data?['choices'] as List?;
+        final text = (choices != null && choices.isNotEmpty)
+            ? ((choices[0]['message']?['content'] as String? ?? '').trim())
+            : '';
+        final usage = response.data?['usage'] as Map<String, dynamic>?;
+        return (
+          text: text,
+          inputTokens: usage?['prompt_tokens'] as int?,
+          outputTokens: usage?['completion_tokens'] as int?,
+        );
+      default:
+        throw Exception('不支援文字校正的服務商：$provider');
+    }
+  }
 }

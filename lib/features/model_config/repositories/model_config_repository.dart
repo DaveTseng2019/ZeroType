@@ -5,17 +5,15 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zero_type/core/constants/app_constants.dart';
 import 'package:zero_type/core/constants/model_pricing.dart';
-import 'package:zero_type/features/model_config/domain/entities/ai_provider.dart';
-import 'package:zero_type/features/model_config/domain/repositories/model_config_repository.dart';
+import 'package:zero_type/features/model_config/entities/ai_provider.dart';
 
-class ModelConfigRepositoryImpl implements ModelConfigRepository {
-  ModelConfigRepositoryImpl({
+class ModelConfigRepository {
+  ModelConfigRepository({
     required SharedPreferences prefs,
   }) : _prefs = prefs;
 
   final SharedPreferences _prefs;
 
-  @override
   Future<ProvidersConfig> loadProvidersConfig() async {
     final jsonString =
         await rootBundle.loadString('assets/config/providers.json');
@@ -145,35 +143,27 @@ class ModelConfigRepositoryImpl implements ModelConfigRepository {
         .toList();
   }
 
-  @override
   Future<String?> getSelectedSpeechProviderId() async =>
       _prefs.getString(AppConstants.selectedSpeechProviderKey);
 
-  @override
   Future<void> saveSelectedSpeechProviderId(String providerId) async =>
       _prefs.setString(AppConstants.selectedSpeechProviderKey, providerId);
 
-  @override
   Future<String?> getSelectedSpeechModelId(String providerId) async =>
       _prefs.getString('${AppConstants.selectedSpeechModelKey}_$providerId');
 
-  @override
   Future<void> saveSelectedSpeechModelId(String providerId, String modelId) async =>
       _prefs.setString('${AppConstants.selectedSpeechModelKey}_$providerId', modelId);
 
-  @override
   Future<String?> getSpeechApiKey(String providerId) async =>
       _prefs.getString('api_key_speech_$providerId');
 
-  @override
   Future<void> saveSpeechApiKey(String providerId, String apiKey) async =>
       _prefs.setString('api_key_speech_$providerId', apiKey);
 
-  @override
   Future<String?> getCustomEndpoint(String providerId) async =>
       _prefs.getString('custom_endpoint_$providerId');
 
-  @override
   Future<void> saveCustomEndpoint(String providerId, String endpoint) async =>
       _prefs.setString('custom_endpoint_$providerId', endpoint);
 }

@@ -1,24 +1,27 @@
-import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zero_type/core/di/injection.dart';
-import 'package:zero_type/features/model_config/data/repositories/model_config_repository_impl.dart';
-import 'package:zero_type/features/model_config/domain/entities/ai_provider.dart';
-import 'package:zero_type/features/model_config/domain/repositories/model_config_repository.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:zero_type/features/model_config/repositories/model_config_repository.dart';
+import 'package:zero_type/features/model_config/entities/ai_provider.dart';
 
-part 'model_config_controller.g.dart';
-
-ModelConfigRepository _buildRepository() => ModelConfigRepositoryImpl(
-      prefs: getIt<SharedPreferences>(),
+ModelConfigRepository _buildRepository() => ModelConfigRepository(
+      prefs: appPrefs,
     );
 
-@riverpod
-Future<ProvidersConfig> providersConfig(Ref ref) async {
-  final repo = _buildRepository();
-  return repo.loadProvidersConfig();
-}
+final providersConfigProvider = FutureProvider<ProvidersConfig>(
+    (ref) => _buildRepository().loadProvidersConfig());
 
-@riverpod
-class SpeechProviderController extends _$SpeechProviderController {
+typedef SpeechProviderConfig = ({
+  String? providerId,
+  String? modelId,
+  String? apiKey,
+  String? customEndpoint,
+});
+
+final speechProviderControllerProvider =
+    AsyncNotifierProvider<SpeechProviderController, SpeechProviderConfig>(
+        SpeechProviderController.new);
+
+class SpeechProviderController extends AsyncNotifier<SpeechProviderConfig> {
   ModelConfigRepository get _repo => _buildRepository();
 
   @override

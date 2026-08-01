@@ -1,16 +1,18 @@
 import 'dart:io';
 
-import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zero_type/core/di/injection.dart';
-import 'package:zero_type/core/router/app_router.dart';
+import 'package:zero_type/features/dictionary/presentation/pages/dictionary_page.dart';
 import 'package:zero_type/features/history/presentation/controllers/history_controller.dart';
+import 'package:zero_type/features/settings/presentation/controllers/settings_controller.dart';
+import 'package:zero_type/features/history/presentation/pages/history_page.dart';
+import 'package:zero_type/features/model_config/presentation/pages/model_config_page.dart';
+import 'package:zero_type/features/prompt/presentation/pages/prompt_page.dart';
+import 'package:zero_type/features/settings/presentation/pages/settings_page.dart';
 import 'package:zero_type/shared/widgets/recording_overlay.dart';
 
-@RoutePage()
 class MainShellPage extends ConsumerStatefulWidget {
   const MainShellPage({super.key});
 
@@ -22,6 +24,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
   static const String _permissionPromptKey = 'has_shown_permission_prompt_v1';
   bool _needsPermissionPrompt = false;
   bool _dialogShown = false;
+  int _activeIndex = 0;
 
   @override
   void initState() {
@@ -30,14 +33,14 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
   }
 
   Future<void> _checkFirstLaunch() async {
-    final prefs = getIt<SharedPreferences>();
+    final prefs = appPrefs;
     if (!prefs.containsKey(_permissionPromptKey)) {
       await prefs.setBool(_permissionPromptKey, true);
       if (mounted) setState(() => _needsPermissionPrompt = true);
     }
   }
 
-  void _showPermissionPrompt(BuildContext context, TabsRouter tabsRouter) {
+  void _showPermissionPrompt(BuildContext context) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -81,7 +84,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
           FilledButton(
             onPressed: () {
               Navigator.pop(ctx);
-              tabsRouter.setActiveIndex(4); // Settings is now index 4
+              setState(() => _activeIndex = 4); // Settings is now index 4
             },
             child: const Text('前往設定'),
           ),
@@ -102,115 +105,119 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
   }
 
   Widget _buildMain() {
-    return AutoTabsRouter(
-      routes: const [
-        ModelConfigRoute(),   // 0 模型
-        PromptRoute(),         // 1 提示詞
-        DictionaryRoute(),     // 2 字典檔
-        HistoryRoute(),        // 3 歷史
-        SettingsRoute(),       // 4 設定
-      ],
-      builder: (context, child) {
-        final tabsRouter = AutoTabsRouter.of(context);
+    if (_needsPermissionPrompt && !_dialogShown) {
+      _dialogShown = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _showPermissionPrompt(context);
+      });
+    }
 
-        if (_needsPermissionPrompt && !_dialogShown) {
-          _dialogShown = true;
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _showPermissionPrompt(context, tabsRouter);
-          });
-        }
-
-        return Scaffold(
-          body: Column(
-            children: [
-              Container(
-                height: 44,
-                color: Theme.of(context).colorScheme.surface,
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: DragToMoveArea(
-                        child: Center(
-                          child: Text(
-                            'Zero Type',
-                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                  fontWeight: FontWeight.bold,
-                                  letterSpacing: 0.5,
-                                ),
-                          ),
-                        ),
+    return Scaffold(
+      body: Column(
+        children: [
+          Container(
+            height: 44,
+            color: Theme.of(context).colorScheme.surface,
+            child: Row(
+              children: [
+                Expanded(
+                  child: DragToMoveArea(
+                    child: Center(
+                      child: Text(
+                        'Zero Type',
+                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                              fontWeight: FontWeight.bold,
+                              letterSpacing: 0.5,
+                            ),
                       ),
                     ),
-                    // macOS 仍有原生紅綠燈按鈕,只在 Windows/Linux 顯示自訂按鈕
-                    if (!Platform.isMacOS) ...[
-                      _WindowButton(
-                        icon: Icons.remove,
-                        onTap: windowManager.minimize,
-                      ),
-                      _WindowButton(
-                        icon: Icons.close,
-                        onTap: windowManager.hide, // 關閉 = 縮到系統匣
-                      ),
-                    ],
-                  ],
+                  ),
                 ),
-              ),
-              const Divider(height: 1, thickness: 1),
-              Expanded(
-                child: Row(
-                  children: [
-                    NavigationRail(
-                      backgroundColor: Theme.of(context).colorScheme.surface,
-                      selectedIndex: tabsRouter.activeIndex,
-                      onDestinationSelected: (index) {
-                        if (index == 3) {
-                          ref.invalidate(historyControllerProvider);
-                          ref.invalidate(historyStatsProvider);
-                        }
-                        tabsRouter.setActiveIndex(index);
-                      },
-                      labelType: NavigationRailLabelType.all,
-                      leading: const SizedBox(height: 16),
-                      selectedIconTheme: IconThemeData(
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      destinations: const [
-                        NavigationRailDestination(
-                          icon: Icon(Icons.tune_outlined),
-                          selectedIcon: Icon(Icons.tune),
-                          label: Text('模型'),
-                        ),
-                        NavigationRailDestination(
-                          icon: Icon(Icons.edit_note_outlined),
-                          selectedIcon: Icon(Icons.edit_note),
-                          label: Text('提示詞'),
-                        ),
-                        NavigationRailDestination(
-                          icon: Icon(Icons.book_outlined),
-                          selectedIcon: Icon(Icons.book),
-                          label: Text('字典檔'),
-                        ),
-                        NavigationRailDestination(
-                          icon: Icon(Icons.history_outlined),
-                          selectedIcon: Icon(Icons.history),
-                          label: Text('歷史'),
-                        ),
-                        NavigationRailDestination(
-                          icon: Icon(Icons.settings_outlined),
-                          selectedIcon: Icon(Icons.settings),
-                          label: Text('設定'),
-                        ),
-                      ],
-                    ),
-                    const VerticalDivider(thickness: 1, width: 1),
-                    Expanded(child: child),
-                  ],
-                ),
-              ),
-            ],
+                // macOS 仍有原生紅綠燈按鈕,只在 Windows/Linux 顯示自訂按鈕
+                if (!Platform.isMacOS) ...[
+                  _WindowButton(
+                    icon: Icons.remove,
+                    onTap: windowManager.minimize,
+                  ),
+                  _WindowButton(
+                    icon: Icons.close,
+                    onTap: windowManager.hide, // 關閉 = 縮到系統匣
+                  ),
+                ],
+              ],
+            ),
           ),
-        );
-      },
+          const Divider(height: 1, thickness: 1),
+          Expanded(
+            child: Row(
+              children: [
+                NavigationRail(
+                  backgroundColor: Theme.of(context).colorScheme.surface,
+                  selectedIndex: _activeIndex,
+                  onDestinationSelected: (index) {
+                    if (index == 3) {
+                      ref.invalidate(historyControllerProvider);
+                      ref.invalidate(historyStatsProvider);
+                    }
+                    if (index == 4) {
+                      // 重新查詢系統權限狀態（原 AutoRouteAware didPush 的職責）
+                      ref.invalidate(settingsControllerProvider);
+                    }
+                    setState(() => _activeIndex = index);
+                  },
+                  labelType: NavigationRailLabelType.all,
+                  leading: const SizedBox(height: 16),
+                  selectedIconTheme: IconThemeData(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  destinations: const [
+                    NavigationRailDestination(
+                      icon: Icon(Icons.tune_outlined),
+                      selectedIcon: Icon(Icons.tune),
+                      label: Text('模型'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.edit_note_outlined),
+                      selectedIcon: Icon(Icons.edit_note),
+                      label: Text('提示詞'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.book_outlined),
+                      selectedIcon: Icon(Icons.book),
+                      label: Text('字典檔'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.history_outlined),
+                      selectedIcon: Icon(Icons.history),
+                      label: Text('歷史'),
+                    ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.settings_outlined),
+                      selectedIcon: Icon(Icons.settings),
+                      label: Text('設定'),
+                    ),
+                  ],
+                ),
+                const VerticalDivider(thickness: 1, width: 1),
+                Expanded(
+                  // notes: IndexedStack 一次建好 5 頁（原 AutoTabsRouter 是懶載入），
+                  // 頁面初始化都是輕量讀取，桌面 app 無感；歷史頁本來就靠切換時 invalidate 更新
+                  child: IndexedStack(
+                    index: _activeIndex,
+                    children: const [
+                      ModelConfigPage(),
+                      PromptPage(),
+                      DictionaryPage(),
+                      HistoryPage(),
+                      SettingsPage(),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

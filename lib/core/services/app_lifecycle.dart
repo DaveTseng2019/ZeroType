@@ -4,8 +4,6 @@ import 'dart:io';
 import 'package:ffi/ffi.dart';
 
 import '../di/injection.dart';
-import 'hotkey_service.dart';
-import 'tray_service.dart';
 
 /// 回傳 true 表示本次是唯一實例;false 表示已有實例在跑(已請它把視窗叫出來),
 /// 呼叫端應直接結束本次啟動。
@@ -107,7 +105,7 @@ Future<bool> _ensureSingleInstanceSocket(void Function() onSecondLaunch) async {
 
 /// 完全結束程式(非縮到系統匣)。
 Never quitApp() {
-  getIt<HotkeyService>().dispose();
-  getIt<TrayService>().dispose();
+  hotkeyService.dispose();
+  trayService.dispose();
   exit(0);
 }

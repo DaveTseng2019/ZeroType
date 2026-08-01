@@ -3,28 +3,25 @@ import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:riverpod_annotation/riverpod_annotation.dart';
 import 'package:zero_type/core/di/injection.dart';
-import 'package:zero_type/features/history/domain/entities/history_stats.dart';
-import 'package:zero_type/features/history/domain/entities/transcription_record.dart';
-import 'package:zero_type/features/history/domain/repositories/history_repository.dart';
-
-part 'history_controller.g.dart';
+import 'package:zero_type/features/history/entities/history_stats.dart';
+import 'package:zero_type/features/history/entities/transcription_record.dart';
 
 // ---------------------------------------------------------------------------
 // Stats provider — cumulative, persisted independently of the record list
 // ---------------------------------------------------------------------------
 
-@riverpod
-Future<HistoryStats> historyStats(Ref ref) =>
-    getIt<HistoryRepository>().getStats();
+final historyStatsProvider =
+    FutureProvider<HistoryStats>((ref) => historyRepository.getStats());
 
 // ---------------------------------------------------------------------------
 // Playback state — which record id is currently playing
 // ---------------------------------------------------------------------------
 
-@riverpod
-class PlayingRecordId extends _$PlayingRecordId {
+final playingRecordIdProvider =
+    NotifierProvider<PlayingRecordId, String?>(PlayingRecordId.new);
+
+class PlayingRecordId extends Notifier<String?> {
   @override
   String? build() => null;
 
@@ -35,14 +32,17 @@ class PlayingRecordId extends _$PlayingRecordId {
 // History controller — manages record list and audio playback
 // ---------------------------------------------------------------------------
 
-@riverpod
-class HistoryController extends _$HistoryController {
+final historyControllerProvider =
+    AsyncNotifierProvider<HistoryController, List<TranscriptionRecord>>(
+        HistoryController.new);
+
+class HistoryController extends AsyncNotifier<List<TranscriptionRecord>> {
   Process? _macProcess; // macOS afplay
 
   @override
   Future<List<TranscriptionRecord>> build() async {
     ref.onDispose(_killProcess);
-    return getIt<HistoryRepository>().getRecords();
+    return historyRepository.getRecords();
   }
 
   // Safe to call from onDispose — does NOT touch ref
@@ -114,13 +114,13 @@ class HistoryController extends _$HistoryController {
   Future<void> deleteRecord(String id) async {
     final currentId = ref.read(playingRecordIdProvider);
     if (currentId == id) _stopPlayback();
-    await getIt<HistoryRepository>().deleteRecord(id);
+    await historyRepository.deleteRecord(id);
     ref.invalidateSelf();
   }
 
   Future<void> clearAll() async {
     _stopPlayback();
-    await getIt<HistoryRepository>().clearAll();
+    await historyRepository.clearAll();
     ref.invalidateSelf();
   }
 }

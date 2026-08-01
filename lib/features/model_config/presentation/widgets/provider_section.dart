@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:zero_type/features/model_config/domain/entities/ai_provider.dart';
+import 'package:zero_type/features/model_config/entities/ai_provider.dart';
 
 class ProviderSection extends StatefulWidget {
   const ProviderSection({

@@ -1,34 +1,27 @@
-import 'package:get_it/get_it.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../services/sound_service.dart';
 import '../services/speech_recognition_service.dart';
 import '../services/hotkey_service.dart';
 import '../services/tray_service.dart';
-import '../../features/history/domain/repositories/history_repository.dart';
-import '../../features/history/data/repositories/history_repository_impl.dart';
+import '../../features/history/repositories/history_repository.dart';
 
-final GetIt getIt = GetIt.instance;
+// notes: 單一行程的桌面 app，top-level 單例就夠；測試從未 mock 這些服務，
+// 需要注入點時再引入 provider
+late final SharedPreferences appPrefs;
+late final Dio dio;
+late final SpeechRecognitionService speechService;
+late final HotkeyService hotkeyService;
+late final TrayService trayService;
+late final SoundService soundService;
+late final HistoryRepository historyRepository;
 
 Future<void> configureDependencies() async {
-  final sharedPreferences = await SharedPreferences.getInstance();
-  getIt.registerSingleton<SharedPreferences>(sharedPreferences);
-
-  final dio = Dio();
-  getIt.registerSingleton<Dio>(dio);
-  getIt.registerSingleton<SpeechRecognitionService>(
-    SpeechRecognitionService(dio: dio),
-  );
-  getIt.registerSingleton<HotkeyService>(
-    HotkeyService(prefs: sharedPreferences),
-  );
-  getIt.registerSingleton<TrayService>(
-    TrayService(),
-  );
-  getIt.registerSingleton<SoundService>(
-    SoundService(prefs: sharedPreferences),
-  );
-  getIt.registerSingleton<HistoryRepository>(
-    HistoryRepositoryImpl(),
-  );
+  appPrefs = await SharedPreferences.getInstance();
+  dio = Dio();
+  speechService = SpeechRecognitionService(dio: dio);
+  hotkeyService = HotkeyService(prefs: appPrefs);
+  trayService = TrayService();
+  soundService = SoundService(prefs: appPrefs);
+  historyRepository = HistoryRepository();
 }

@@ -11,22 +11,8 @@ dependencies:
   flutter:
     sdk: flutter
 
-  cupertino_icons: ^1.0.8
-
   # State management
   flutter_riverpod: ^3.1.0
-  riverpod_annotation: ^4.0.0
-
-  # DI
-  get_it: ^9.2.1
-
-  # Navigation
-  auto_route: ^11.1.0
-
-  # Data models
-  freezed_annotation: ^3.1.0
-  json_annotation: ^4.9.0
-
 
   # Recording
   record: ^6.2.0
@@ -50,7 +36,6 @@ dependencies:
   dio: ^5.8.0+1
 
   # File paths
-  path: ^1.9.1
   path_provider: ^2.1.5
 
   # Window management (for overlay window)
@@ -66,24 +51,9 @@ dev_dependencies:
     sdk: flutter
 
   flutter_lints: ^6.0.0
-  flutter_launcher_icons: ^0.13.0
 
-  # Code generation
-  build_runner: ^2.4.14
-  freezed: ^3.2.3
-  json_serializable: ^6.9.2
-  auto_route_generator: ^10.4.0
-  riverpod_generator: ^4.0.0+1
-  custom_lint: ^0.8.1
-  riverpod_lint: ^3.1.0
-
-flutter_launcher_icons:
-  macos:
-    generate: true
-    image_path: "assets/icons/icon.png"
-  windows:
-    generate: true
-    image_path: "assets/icons/icon.png"
+# notes: app_icon.ico 是手動生成的多尺寸 ico（16–256px，scratchpad 的 Pillow 腳本），
+# 不再用 flutter_launcher_icons——它只會產 48px 單尺寸，縮放後模糊
 
 flutter:
   uses-material-design: true

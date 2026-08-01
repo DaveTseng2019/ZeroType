@@ -1,9 +1,7 @@
-import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zero_type/features/dictionary/presentation/controllers/dictionary_controller.dart';
 
-@RoutePage()
 class DictionaryPage extends ConsumerStatefulWidget {
   const DictionaryPage({super.key});
 

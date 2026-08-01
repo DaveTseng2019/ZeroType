@@ -12,15 +12,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'core/constants/app_constants.dart';
 import 'core/controllers/zero_type_controller.dart';
 import 'core/di/injection.dart';
-import 'core/router/app_router.dart';
-import 'core/router/router_provider.dart';
 import 'core/services/app_lifecycle.dart';
-import 'core/services/hotkey_service.dart';
-import 'core/services/tray_service.dart';
 import 'core/state/zero_type_state.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
-import 'features/history/domain/repositories/history_repository.dart';
+import 'shared/widgets/main_shell.dart';
 import 'shared/widgets/recording_overlay.dart';
 
 void main() async {
@@ -70,7 +66,7 @@ Future<void> _initLaunchAtStartup() async {
     packageName: packageInfo.packageName,
   );
   // 登錄檔路徑可能因搬移/重裝而失效,每次啟動依設定重寫成目前執行檔路徑
-  if (getIt<SharedPreferences>().getBool(AppConstants.launchAtStartupKey) ?? false) {
+  if (appPrefs.getBool(AppConstants.launchAtStartupKey) ?? false) {
     await launchAtStartup.enable();
   }
 }
@@ -81,14 +77,13 @@ class ZeroTypeApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final themeMode = ref.watch(themeControllerProvider);
-    final appRouter = ref.watch(appRouterProvider);
-    
-    return MaterialApp.router(
+
+    return MaterialApp(
       title: 'ZeroType',
       theme: AppTheme.lightTheme,
       darkTheme: AppTheme.darkTheme,
       themeMode: themeMode,
-      routerConfig: appRouter.config(),
+      home: const MainShellPage(),
       debugShowCheckedModeBanner: false,
       builder: (context, child) => _AppInitializer(
         child: Stack(
@@ -112,8 +107,8 @@ class _AppInitializer extends ConsumerStatefulWidget {
 
 class _AppInitializerState extends ConsumerState<_AppInitializer>
     with WindowListener {
-  final _hotkeyService = getIt<HotkeyService>();
-  final _trayService = getIt<TrayService>();
+  final _hotkeyService = hotkeyService;
+  final _trayService = trayService;
 
   @override
   void initState() {
@@ -132,9 +127,9 @@ class _AppInitializerState extends ConsumerState<_AppInitializer>
     );
 
     // Auto-purge expired history records on startup
-    final prefs = getIt<SharedPreferences>();
+    final prefs = appPrefs;
     final retentionDays = prefs.getInt(AppConstants.historyRetentionDaysKey) ?? 7;
-    await getIt<HistoryRepository>().purgeExpiredRecords(retentionDays);
+    await historyRepository.purgeExpiredRecords(retentionDays);
   }
 
   Future<void> _onHotkeyActivated() async {

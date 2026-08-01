@@ -1,14 +1,14 @@
-import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:zero_type/features/dictionary/data/repositories/dictionary_repository_impl.dart';
-import 'package:zero_type/features/dictionary/domain/repositories/dictionary_repository.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:zero_type/features/dictionary/repositories/dictionary_repository.dart';
 
-part 'dictionary_controller.g.dart';
+final dictionaryRepositoryProvider =
+    Provider<DictionaryRepository>((ref) => DictionaryRepository());
 
-@riverpod
-DictionaryRepository dictionaryRepository(Ref ref) => DictionaryRepositoryImpl();
+final dictionaryControllerProvider =
+    AsyncNotifierProvider<DictionaryController, List<String>>(
+        DictionaryController.new);
 
-@riverpod
-class DictionaryController extends _$DictionaryController {
+class DictionaryController extends AsyncNotifier<List<String>> {
   @override
   Future<List<String>> build() async {
     final repo = ref.watch(dictionaryRepositoryProvider);

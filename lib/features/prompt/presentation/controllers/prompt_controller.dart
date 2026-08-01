@@ -1,17 +1,15 @@
-import 'package:riverpod_annotation/riverpod_annotation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zero_type/core/di/injection.dart';
-import 'package:zero_type/features/prompt/data/repositories/prompt_repository_impl.dart';
-import 'package:zero_type/features/prompt/domain/repositories/prompt_repository.dart';
+import 'package:zero_type/features/prompt/repositories/prompt_repository.dart';
 
-part 'prompt_controller.g.dart';
+final promptRepositoryProvider =
+    Provider<PromptRepository>((ref) => PromptRepository(prefs: appPrefs));
 
-@riverpod
-PromptRepository promptRepository(Ref ref) =>
-    PromptRepositoryImpl(prefs: getIt<SharedPreferences>());
+final speechPromptControllerProvider =
+    AsyncNotifierProvider<SpeechPromptController, String>(
+        SpeechPromptController.new);
 
-@riverpod
-class SpeechPromptController extends _$SpeechPromptController {
+class SpeechPromptController extends AsyncNotifier<String> {
   @override
   Future<String> build() async {
     final repo = ref.watch(promptRepositoryProvider);

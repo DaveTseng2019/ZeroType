@@ -1,14 +1,12 @@
 import 'dart:io';
 
-import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zero_type/core/constants/model_pricing.dart';
-import 'package:zero_type/features/history/domain/entities/history_stats.dart';
-import 'package:zero_type/features/history/domain/entities/transcription_record.dart';
+import 'package:zero_type/features/history/entities/history_stats.dart';
+import 'package:zero_type/features/history/entities/transcription_record.dart';
 import '../controllers/history_controller.dart';
 
-@RoutePage()
 class HistoryPage extends ConsumerStatefulWidget {
   const HistoryPage({super.key});
 

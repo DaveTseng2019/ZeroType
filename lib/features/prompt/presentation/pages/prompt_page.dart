@@ -1,10 +1,8 @@
-import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zero_type/features/prompt/presentation/controllers/prompt_controller.dart';
 import 'package:zero_type/features/prompt/presentation/widgets/prompt_editor.dart';
 
-@RoutePage()
 class PromptPage extends ConsumerWidget {
   const PromptPage({super.key});
 

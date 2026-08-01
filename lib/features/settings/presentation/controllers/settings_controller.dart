@@ -3,37 +3,36 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
-import 'package:riverpod_annotation/riverpod_annotation.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:record/record.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zero_type/core/constants/app_constants.dart';
 import 'package:zero_type/core/di/injection.dart';
-import 'package:zero_type/core/services/hotkey_service.dart';
 import 'package:zero_type/core/services/recording_service.dart';
 import 'package:zero_type/core/services/sound_service.dart';
 import 'settings_state.dart';
 
-part 'settings_controller.g.dart';
+final settingsControllerProvider =
+    AsyncNotifierProvider<SettingsController, SettingsState>(
+        SettingsController.new);
 
-@riverpod
-class SettingsController extends _$SettingsController {
+class SettingsController extends AsyncNotifier<SettingsState> {
   @override
   Future<SettingsState> build() async {
     print('[SettingsController] Building state...');
 
     try {
       print('[SettingsController] Checking if launch at startup is enabled...');
-      final isLaunchEnabled = getIt<SharedPreferences>().getBool(AppConstants.launchAtStartupKey) ?? false;
-      final startupMinimized = getIt<SharedPreferences>().getBool(AppConstants.startupMinimizedKey) ?? false;
+      final isLaunchEnabled = appPrefs.getBool(AppConstants.launchAtStartupKey) ?? false;
+      final startupMinimized = appPrefs.getBool(AppConstants.startupMinimizedKey) ?? false;
       
       print('[SettingsController] Fetching current hotkey...');
-      final hotkey = getIt<HotkeyService>().currentHotkey;
+      final hotkey = hotkeyService.currentHotkey;
 
       print('[SettingsController] Fetching permissions...');
       final isAccessibilityAuthorized = await _checkAccessibility();
       final isMicrophoneAuthorized = await AudioRecorder().hasPermission();
 
-      final prefs = getIt<SharedPreferences>();
+      final prefs = appPrefs;
       final soundEnabled = prefs.getBool(AppConstants.soundEnabledKey) ?? true;
       final startSound = prefs.getString(AppConstants.startSoundKey) ?? kDefaultStartSound;
       final stopSound = prefs.getString(AppConstants.stopSoundKey) ?? kDefaultStopSound;
@@ -88,7 +87,7 @@ class SettingsController extends _$SettingsController {
       print('[SettingsController] toggleLaunchAtStartup error: $e');
       return;
     }
-    await getIt<SharedPreferences>().setBool(AppConstants.launchAtStartupKey, value);
+    await appPrefs.setBool(AppConstants.launchAtStartupKey, value);
     final currentState = state.value;
     if (currentState != null) {
       state = AsyncData(currentState.copyWith(launchAtStartup: value));
@@ -96,7 +95,7 @@ class SettingsController extends _$SettingsController {
   }
 
   Future<void> toggleStartupMinimized(bool value) async {
-    await getIt<SharedPreferences>().setBool(AppConstants.startupMinimizedKey, value);
+    await appPrefs.setBool(AppConstants.startupMinimizedKey, value);
     final currentState = state.value;
     if (currentState != null) {
       state = AsyncData(currentState.copyWith(startupMinimized: value));
@@ -109,7 +108,7 @@ class SettingsController extends _$SettingsController {
     if (currentState == null) return;
 
     // Disable global hotkey BEFORE showing overlay to prevent accidental triggers
-    await getIt<HotkeyService>().pause();
+    await hotkeyService.pause();
 
     state = AsyncData(currentState.copyWith(isRecordingHotkey: true));
   }
@@ -120,7 +119,7 @@ class SettingsController extends _$SettingsController {
     if (currentState == null) return;
     
     // Re-enable global hotkey
-    getIt<HotkeyService>().resume();
+    hotkeyService.resume();
     
     state = AsyncData(currentState.copyWith(isRecordingHotkey: false));
   }
@@ -158,7 +157,7 @@ class SettingsController extends _$SettingsController {
       scope: HotKeyScope.system,
     );
 
-    await getIt<HotkeyService>().updateHotkey(newHotKey);
+    await hotkeyService.updateHotkey(newHotKey);
     
     // Stop recording and trigger refresh
     final currentState = state.value;
@@ -170,11 +169,11 @@ class SettingsController extends _$SettingsController {
     }
     
     // Resume local hotkey (already handled in stopRecordingHotkey but stay safe)
-    getIt<HotkeyService>().resume();
+    hotkeyService.resume();
   }
 
   Future<void> toggleSound(bool value) async {
-    await getIt<SharedPreferences>().setBool(AppConstants.soundEnabledKey, value);
+    await appPrefs.setBool(AppConstants.soundEnabledKey, value);
     final currentState = state.value;
     if (currentState != null) {
       state = AsyncData(currentState.copyWith(soundEnabled: value));
@@ -182,7 +181,7 @@ class SettingsController extends _$SettingsController {
   }
 
   Future<void> setStartSound(String path) async {
-    await getIt<SharedPreferences>().setString(AppConstants.startSoundKey, path);
+    await appPrefs.setString(AppConstants.startSoundKey, path);
     final currentState = state.value;
     if (currentState != null) {
       state = AsyncData(currentState.copyWith(startSound: path));
@@ -190,7 +189,7 @@ class SettingsController extends _$SettingsController {
   }
 
   Future<void> setStopSound(String path) async {
-    await getIt<SharedPreferences>().setString(AppConstants.stopSoundKey, path);
+    await appPrefs.setString(AppConstants.stopSoundKey, path);
     final currentState = state.value;
     if (currentState != null) {
       state = AsyncData(currentState.copyWith(stopSound: path));
@@ -198,7 +197,7 @@ class SettingsController extends _$SettingsController {
   }
 
   Future<void> setHistoryRetentionDays(int days) async {
-    await getIt<SharedPreferences>().setInt(AppConstants.historyRetentionDaysKey, days);
+    await appPrefs.setInt(AppConstants.historyRetentionDaysKey, days);
     final currentState = state.value;
     if (currentState != null) {
       state = AsyncData(currentState.copyWith(historyRetentionDays: days));
@@ -207,7 +206,7 @@ class SettingsController extends _$SettingsController {
 
   /// 空字串 = 系統預設輸入裝置
   Future<void> setInputDeviceId(String deviceId) async {
-    await getIt<SharedPreferences>()
+    await appPrefs
         .setString(AppConstants.inputDeviceIdKey, deviceId);
     final currentState = state.value;
     if (currentState != null) {
@@ -216,7 +215,7 @@ class SettingsController extends _$SettingsController {
   }
 
   Future<void> toggleNoiseGate(bool value) async {
-    await getIt<SharedPreferences>()
+    await appPrefs
         .setBool(AppConstants.noiseGateEnabledKey, value);
     final currentState = state.value;
     if (currentState != null) {
@@ -225,7 +224,7 @@ class SettingsController extends _$SettingsController {
   }
 
   Future<void> setNoiseGateStrength(double strength) async {
-    await getIt<SharedPreferences>()
+    await appPrefs
         .setDouble(AppConstants.noiseGateStrengthKey, strength);
     final currentState = state.value;
     if (currentState != null) {
@@ -234,7 +233,7 @@ class SettingsController extends _$SettingsController {
   }
 
   Future<void> setRecordWarmupMs(int ms) async {
-    await getIt<SharedPreferences>()
+    await appPrefs
         .setInt(AppConstants.recordWarmupMsKey, ms);
     final currentState = state.value;
     if (currentState != null) {
@@ -261,7 +260,7 @@ class SettingsController extends _$SettingsController {
   }
 
   Future<void> setMaxRecordingMinutes(int minutes) async {
-    await getIt<SharedPreferences>().setInt(AppConstants.maxRecordingMinutesKey, minutes);
+    await appPrefs.setInt(AppConstants.maxRecordingMinutesKey, minutes);
     final currentState = state.value;
     if (currentState != null) {
       state = AsyncData(currentState.copyWith(maxRecordingMinutes: minutes));

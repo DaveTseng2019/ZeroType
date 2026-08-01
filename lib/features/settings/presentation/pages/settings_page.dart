@@ -1,11 +1,9 @@
 import 'dart:io';
 
-import 'package:auto_route/auto_route.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
-import 'package:dio/dio.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -17,7 +15,6 @@ import 'package:zero_type/core/theme/theme_controller.dart';
 import 'package:zero_type/core/utils/version_compare.dart';
 import '../controllers/settings_controller.dart';
 
-@RoutePage()
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
 
@@ -25,7 +22,7 @@ class SettingsPage extends ConsumerStatefulWidget {
   ConsumerState<SettingsPage> createState() => _SettingsPageState();
 }
 
-class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBindingObserver, AutoRouteAwareStateMixin<SettingsPage> {
+class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBindingObserver {
 
   @override
   void initState() {
@@ -49,12 +46,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
     }
   }
 
-  @override
-  void didPush() => _invalidateSettings();
-
-  @override
-  void didPopNext() => _invalidateSettings();
-
+  // notes: 原 AutoRouteAwareStateMixin 的 didPush/didPopNext 改由 main_shell
+  // 切到設定 tab 時 invalidate settingsControllerProvider 達成同樣的權限重查
   void _invalidateSettings() {
     // Invalidating forces the provider to call build() from scratch,
     // ensuring we always get fresh permission states from the OS.
@@ -1036,7 +1029,7 @@ class _UpdateCheckTileState extends State<_UpdateCheckTile> {
     if (mounted) setState(() => _currentVersion = info.version);
 
     try {
-      final response = await getIt<Dio>()
+      final response = await dio
           .get(AppConstants.githubLatestReleaseApiUrl);
       final tag = response.data['tag_name'] as String? ?? '';
       if (!mounted) return;
@@ -1249,7 +1242,7 @@ class _SoundPickerTile extends StatelessWidget {
               tooltip: '預覽「$selectedLabel」',
               icon: Icon(Icons.play_arrow_rounded, color: cs.primary, size: 20),
               onPressed: enabled
-                  ? () => getIt<SoundService>().playPreview(effectivePath)
+                  ? () => soundService.playPreview(effectivePath)
                   : null,
             ),
           ],
