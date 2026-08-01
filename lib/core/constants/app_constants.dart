@@ -24,9 +24,9 @@ class AppConstants {
   static const String noiseGateStrengthKey = 'noise_gate_strength';
   static const String recordWarmupMsKey = 'record_warmup_ms';
 
-  static const String githubRepoUrl = 'https://github.com/nick1ee/ZeroType';
+  static const String githubRepoUrl = 'https://github.com/DaveTseng2019/ZeroType';
   static const String githubLatestReleaseApiUrl =
-      'https://api.github.com/repos/nick1ee/ZeroType/releases/latest';
+      'https://api.github.com/repos/DaveTseng2019/ZeroType/releases/latest';
 }
 
 class SecureStorageKeys {
