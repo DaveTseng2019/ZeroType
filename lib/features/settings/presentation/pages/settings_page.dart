@@ -5,12 +5,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
+import 'package:dio/dio.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:record/record.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:zero_type/core/constants/app_constants.dart';
 import 'package:zero_type/core/di/injection.dart';
 import 'package:zero_type/core/services/app_lifecycle.dart';
 import 'package:zero_type/core/services/sound_service.dart';
 import 'package:zero_type/core/theme/theme_controller.dart';
+import 'package:zero_type/core/utils/version_compare.dart';
 import '../controllers/settings_controller.dart';
 
 @RoutePage()
@@ -469,6 +473,30 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                   ],
                 ),
 
+                const SizedBox(height: 32),
+
+                // --- About Section ---
+                _SectionHeader(title: '關於'),
+                const SizedBox(height: 12),
+                _SettingsCard(
+                  children: [
+                    _SettingTile(
+                      icon: Icons.code,
+                      title: 'GitHub',
+                      subtitle: '原始碼、Issue 回報與版本紀錄',
+                      trailing: OutlinedButton(
+                        onPressed: () => launchUrl(
+                          Uri.parse(AppConstants.githubRepoUrl),
+                          mode: LaunchMode.externalApplication,
+                        ),
+                        child: const Text('開啟'),
+                      ),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    const _UpdateCheckTile(),
+                  ],
+                ),
+
                 const SizedBox(height: 24),
 
                 // --- Quit ---
@@ -479,22 +507,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                     label: const Text('結束 ZeroType'),
                     style: TextButton.styleFrom(
                       foregroundColor: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 4),
-
-                // --- Version ---
-                Center(
-                  child: FutureBuilder<PackageInfo>(
-                    future: PackageInfo.fromPlatform(),
-                    builder: (context, snapshot) => Text(
-                      snapshot.hasData
-                          ? 'ZeroType v${snapshot.data!.version}'
-                          : '',
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: Theme.of(context).hintColor,
-                          ),
                     ),
                   ),
                 ),
@@ -995,6 +1007,87 @@ class _LoadingTile extends StatelessWidget {
     return const Padding(
       padding: EdgeInsets.all(20),
       child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+    );
+  }
+}
+
+class _UpdateCheckTile extends StatefulWidget {
+  const _UpdateCheckTile();
+
+  @override
+  State<_UpdateCheckTile> createState() => _UpdateCheckTileState();
+}
+
+class _UpdateCheckTileState extends State<_UpdateCheckTile> {
+  String _currentVersion = '';
+  String? _latestVersion;
+  String? _releaseUrl;
+  bool _checking = true;
+  bool _checkFailed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  Future<void> _check() async {
+    final info = await PackageInfo.fromPlatform();
+    if (mounted) setState(() => _currentVersion = info.version);
+
+    try {
+      final response = await getIt<Dio>()
+          .get(AppConstants.githubLatestReleaseApiUrl);
+      final tag = response.data['tag_name'] as String? ?? '';
+      if (!mounted) return;
+      setState(() {
+        _latestVersion = tag.replaceFirst(RegExp(r'^v'), '');
+        _releaseUrl = response.data['html_url'] as String?;
+        _checking = false;
+      });
+    } catch (e) {
+      print('[SettingsPage] Update check failed: $e');
+      if (!mounted) return;
+      setState(() {
+        _checking = false;
+        _checkFailed = true;
+      });
+    }
+  }
+
+  bool get _updateAvailable {
+    final latest = _latestVersion;
+    if (latest == null) return false;
+    return isNewerVersion(latest, _currentVersion);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final subtitle = _checking
+        ? '檢查更新中...'
+        : _checkFailed
+            ? '無法檢查更新，請確認網路連線'
+            : _updateAvailable
+                ? '發現新版本 v$_latestVersion'
+                : '已是最新版本';
+
+    return _SettingTile(
+      icon: Icons.new_releases_outlined,
+      title: '版本',
+      subtitle: _currentVersion.isEmpty
+          ? subtitle
+          : 'v$_currentVersion ・ $subtitle',
+      trailing: _updateAvailable
+          ? ElevatedButton(
+              onPressed: _releaseUrl == null
+                  ? null
+                  : () => launchUrl(
+                        Uri.parse(_releaseUrl!),
+                        mode: LaunchMode.externalApplication,
+                      ),
+              child: const Text('下載更新'),
+            )
+          : const SizedBox.shrink(),
     );
   }
 }
