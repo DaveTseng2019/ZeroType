@@ -1,5 +1,7 @@
 # Zero Type
 
+> **這是 fork。** 原作 [nick1ee/ZeroType](https://github.com/nick1ee/ZeroType) 自 2026-03 起未再更新，PR 也無人審查，故另行維護。以下連結與版本紀錄皆以本 repo 為準。
+
 > 一個 Vibe Coding 出來的繁體中文語音輸入工具。
 
 市面上大多數語音辨識軟體對繁體中文（特別是台灣人慣用的晶晶體中英混用語境）支援度有限，且背後處理邏輯不透明。ZeroType 透過直接串接外部 LLM API，打造一套開放、透明、可自訂的語音辨識輸入系統。
@@ -74,7 +76,7 @@
 
 ### 方法一：直接下載（推薦）
 
-1. 前往 [Releases](https://github.com/nick1ee/ZeroType/releases) 頁面下載最新版本
+1. 前往 [Releases](https://github.com/DaveTseng2019/ZeroType/releases) 頁面下載最新版本
 2. macOS：開啟 `.dmg` 並將 **ZeroType.app** 拖入 Applications 資料夾；Windows：直接執行 `zero_type.exe`
 3. 首次執行時，依照提示授予以下權限：
    - **麥克風** — 語音輸入所需
@@ -86,7 +88,7 @@
 **開發模式**
 
 ```bash
-git clone https://github.com/nick1ee/ZeroType.git
+git clone https://github.com/DaveTseng2019/ZeroType.git
 cd ZeroType
 flutter pub get
 dart run build_runner build --delete-conflicting-outputs   # 產生 freezed / riverpod / auto_route 程式碼
@@ -108,7 +110,7 @@ flutter build windows --release
 
 ## 🔄 更新方式
 
-**一般使用者**：到 [Releases](https://github.com/nick1ee/ZeroType/releases) 下載新版，直接覆蓋舊的 `.app` / `.exe` 即可。設定與歷史紀錄存放在使用者資料目錄，覆蓋安裝不會遺失。
+**一般使用者**：到 [Releases](https://github.com/DaveTseng2019/ZeroType/releases) 下載新版，直接覆蓋舊的 `.app` / `.exe` 即可；或直接在 App 內「設定 → 關於」點「下載更新」。設定與歷史紀錄存放在使用者資料目錄，覆蓋安裝不會遺失。
 
 **從原始碼更新**
 
@@ -126,7 +128,7 @@ flutter run -d macos      # 或重新 build release
 ## 🌍 語言支援 & 貢獻 (Localization & Contribution)
 
 - **地區限制**：目前此 App 主要針對 **台灣使用情境** 設計，輸出內容以 **繁體中文** 與 **英文** 為主。未來是否有增加其他語言支援？若「有緣」的話之後再行考慮。
-- **回報問題與協助**：如果你在使用上發現任何問題，或是單純想提供改進建議，歡迎直接發 **Issue** 或發 **Pull Request** 給我。只要我有看到訊息，第一時間就會來幫大家處理與解決。
+- **回報問題與協助**：如果你在使用上發現任何問題，或是單純想提供改進建議，歡迎在 [本 repo](https://github.com/DaveTseng2019/ZeroType) 發 **Issue** 或 **Pull Request**。
 
 ---
 
