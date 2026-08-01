@@ -48,8 +48,12 @@ class DictionaryRepositoryImpl implements DictionaryRepository {
   Future<String> buildDictionaryPrompt() async {
     final words = await loadWords();
     if (words.isEmpty) return '';
-    return '以下是專有名詞字典，僅供修正拼寫：'
-        '當音檔中出現發音相同或相近的詞時，採用字典的寫法；'
-        '音檔中沒有出現的詞，嚴禁自行加入輸出。\n${words.join('、')}';
+    // notes: 「僅供修正拼寫＋嚴禁加入」的敘述式禁令實測壓不住插入；
+    // 改成替換規則＋最終檢查兩段式（API 實測 8/8 零插入、2/2 正確改寫「藥群→耀群」）
+    return 'dictionary_hints:\n'
+        '  - 這是拼寫替換規則，不是要輸出的文字：'
+        '僅當音檔中出現與下列詞彙發音相同或相近的詞時，'
+        '才將該詞改寫成字典的寫法：${words.join('、')}\n'
+        '  - 最終檢查：字典裡的詞若其發音沒有在音檔中出現，輸出中不得含有該詞。';
   }
 }
