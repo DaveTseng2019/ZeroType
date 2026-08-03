@@ -208,7 +208,27 @@ class SettingsController extends AsyncNotifier<SettingsState> {
     final currentState = state.value;
     if (currentState != null) {
       state = AsyncData(currentState.copyWith(inputDeviceId: deviceId));
+      await setRecordWarmupMs(_defaultWarmupFor(currentState, deviceId));
     }
+  }
+
+  /// 換裝置時順便帶出合理的等待值：藍牙耳機要丟掉切換通話模式那段死區，
+  /// 其他麥克風一開就有訊號，等待只會變成「等你開口」。
+  ///
+  /// notes: 靠名字裡有沒有「耳機」判斷。Windows 的 endpoint 沒有「這是不是藍牙」
+  /// 的乾淨旗標，裝置名稱是現成又看得懂的線索；判錯了使用者自己拉滑桿就好。
+  int _defaultWarmupFor(SettingsState s, String deviceId) {
+    final label = deviceId.isEmpty
+        // 空字串是「系統預設」，實際錄音吃的是預設通訊裝置
+        ? (s.defaultCommsDeviceLabel.isEmpty
+            ? s.defaultDeviceLabel
+            : s.defaultCommsDeviceLabel)
+        : s.inputDevices
+            .where((d) => d.id == deviceId)
+            .map((d) => d.label)
+            .join();
+    // 1 秒：實測 HFP 切換約 0.93 秒完成；時間到就算就緒，不看訊號內容
+    return label.contains('耳機') ? 1000 : 0;
   }
 
   Future<void> setNoiseGateStrength(double strength) async {

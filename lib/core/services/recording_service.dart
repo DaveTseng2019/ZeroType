@@ -100,11 +100,9 @@ const double kSilentChunkRms = 20;
 
 /// 低於這個 RMS 視為「驅動還沒把訊號接上」的數位靜音。
 ///
-/// 真的在收音的麥克風一定有底噪（實測最安靜的內建麥克風也有 5~9），
-/// 全零只會出現在裝置還沒開始送資料的時候。分成兩個門檻是因為
-/// [kSilentChunkRms] 那條逾時保險絲是為了救「底噪很低」的麥克風，
-/// 但它不該讓全零的死區也放行 —— 實測這支裝置會送 9.5 秒的全零，
-/// 比 8 秒的保險絲還久，剩下的 1.5 秒就這樣被錄進檔案開頭。
+/// 用來決定 onCaptureStart（提示音）何時觸發：沒開等待時，第一個不是數位靜音的
+/// chunk 就代表麥克風真的活了。實測藍牙耳機落在約 0.83 秒，比使用者開口早得多。
+/// 不拿來當就緒判斷 —— 見 [MicReadyGate.accept]。
 const double kDeadChunkRms = 1.0;
 
 /// 要連續多久不靜音才算麥克風真的活了。
@@ -141,36 +139,31 @@ class MicReadyGate {
     }
 
     final held = _loudSince != null && now.difference(_loudSince!) >= hold;
-    // 保險絲燒斷也不收全零：那是還沒接上的訊號，不是「安靜的麥克風」。
-    // 收了只會讓檔案開頭多一段死區，提示音也會在麥克風真的活過來之前就響。
-    if (!held && (now.isBefore(deadline) || rms < kDeadChunkRms)) return false;
+    // notes: 保險絲燒斷就算就緒，不再看訊號內容。曾經改成「全零就繼續等」，
+    // 但帶降噪的耳機接通後沒人講話時本來就送全零（實測 WF-C510 可以送滿 23 秒），
+    // 那條規則會讓就緒永遠不觸發，變成非得先開口才會開始錄。
+    // 現在改回時間到就放行 —— 等待值訂在切換完成之後（耳機預設 1 秒，
+    // 實測 HFP 切換約 0.93 秒）就夠了，不必再去猜訊號。
+    if (!held && now.isBefore(deadline)) return false;
 
     if (!loud) pending.add(chunk); // 逾時放行：這個 chunk 還沒進候選
     return true;
   }
 }
 
-/// 「像人聲」的音框門檻與最短累計時長。
+/// [pcm] 裡有沒有任何一個音框不是數位靜音。
 ///
-/// 空音訊送進 chat 型語音模型，它會憑空編出一整段內容 —— 實測
-/// gemini-3-flash-preview、gemini-2.5-flash、gemini-2.5-pro 對純靜音分別編出
-/// 會議議程、訪談節目、電影台詞，換模型解決不了，只能不要送出去。
+/// 只問「有沒有聲音」，不管長短大小 —— 完全空白的錄音送去辨識，chat 型模型會
+/// 憑空編出一整段內容（實測 gemini-3-flash、2.5-flash、2.5-pro 對純靜音分別編出
+/// 會議議程、訪談節目、電影台詞，換模型或改提示詞都壓不住）。
 ///
-/// 門檻用實測校準：正常錄音在 RMS 100 以上有 980～1720ms；一筆麥克風幾乎沒收到
-/// 東西的只有 360ms，模型對它連跑三次編出三段不同的內容。500ms 落在中間。
-///
-/// notes: 寧可誤擋也不要誤放 —— 被擋下來使用者看得到「沒有偵測到語音」，重錄就好；
-/// 放行的幻覺卻是一段像模像樣的文字，直接貼進文件裡，不一定會被發現。
-/// 代價是單字級的短句（「好」約 200~300ms）會被擋掉。
-const double kSpeechRms = 100;
-const Duration kMinSpeech = Duration(milliseconds: 500);
-
-/// [pcm] 裡 RMS 達到 [kSpeechRms] 的音框累計時長。
-Duration speechDuration(Uint8List pcm, {int sampleRate = kRecordSampleRate}) {
+/// notes: 曾經把門檻訂成「RMS ≥ 100 累計滿 500ms」，那是在噪音門檻把音訊挖空、
+/// 誤以為模型無藥可救的時候加的。根因修掉之後那個門檻只剩副作用 ——
+/// 連單字級的短句（「好」約 200~300ms）都會被擋掉。
+bool hasAnySound(Uint8List pcm, {int sampleRate = kRecordSampleRate}) {
   final frameSamples = sampleRate * _kFrameMs ~/ 1000;
   final total = pcm.lengthInBytes ~/ 2;
   final bd = ByteData.sublistView(pcm);
-  var frames = 0;
   for (var f = 0; f < total ~/ frameSamples; f++) {
     var sum = 0.0;
     final start = f * frameSamples;
@@ -178,9 +171,9 @@ Duration speechDuration(Uint8List pcm, {int sampleRate = kRecordSampleRate}) {
       final s = bd.getInt16(i * 2, Endian.little);
       sum += s * s.toDouble();
     }
-    if (sqrt(sum / frameSamples) >= kSpeechRms) frames++;
+    if (sqrt(sum / frameSamples) >= kDeadChunkRms) return true;
   }
-  return Duration(milliseconds: frames * _kFrameMs);
+  return false;
 }
 
 /// 從 [devices] 找出 [deviceId] 指定的裝置。
@@ -448,12 +441,9 @@ class RecordingService {
         ? applyNoiseGate(pcm, marginFactor: _noiseGateStrength)
         : pcm;
 
-    // 沒有人聲就不要送去辨識 —— 模型會憑空編一段出來（見 [kSpeechRms]）。
-    // 回 null 走的是既有的「沒錄到東西」路徑，不另外開一種狀態。
-    final speech = speechDuration(processed);
-    if (speech < kMinSpeech) {
-      print('[RecordingService] no speech (${speech.inMilliseconds}ms), '
-          'discarding ${pcm.length} bytes');
+    // 整段都是數位靜音就不要送辨識 —— 模型會憑空編一段出來（見 [hasAnySound]）
+    if (!hasAnySound(processed)) {
+      print('[RecordingService] silence only, discarding ${pcm.length} bytes');
       return null;
     }
 

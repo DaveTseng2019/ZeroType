@@ -10,6 +10,7 @@ import 'package:zero_type/features/dictionary/presentation/pages/dictionary_page
 import 'package:zero_type/features/history/presentation/controllers/history_controller.dart';
 import 'package:zero_type/features/settings/presentation/controllers/settings_controller.dart';
 import 'package:zero_type/features/history/presentation/pages/history_page.dart';
+import 'package:zero_type/features/log/log_page.dart';
 import 'package:zero_type/features/model_config/presentation/pages/model_config_page.dart';
 import 'package:zero_type/features/prompt/presentation/pages/prompt_page.dart';
 import 'package:zero_type/features/settings/presentation/pages/settings_page.dart';
@@ -192,11 +193,16 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
                       selectedIcon: Icon(Icons.settings),
                       label: Text('設定'),
                     ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.receipt_long_outlined),
+                      selectedIcon: Icon(Icons.receipt_long),
+                      label: Text('紀錄'),
+                    ),
                   ],
                 ),
                 const VerticalDivider(thickness: 1, width: 1),
                 Expanded(
-                  // notes: IndexedStack 一次建好 5 頁（原 AutoTabsRouter 是懶載入），
+                  // notes: IndexedStack 一次建好所有頁（原 AutoTabsRouter 是懶載入），
                   // 頁面初始化都是輕量讀取，桌面 app 無感；歷史頁本來就靠切換時 invalidate 更新
                   child: IndexedStack(
                     index: _activeIndex,
@@ -206,6 +212,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
                       DictionaryPage(),
                       HistoryPage(),
                       SettingsPage(),
+                      LogPage(),
                     ],
                   ),
                 ),

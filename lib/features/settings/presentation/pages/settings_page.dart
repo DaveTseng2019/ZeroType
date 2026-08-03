@@ -230,11 +230,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                       data: (data) => _SettingTile(
                         icon: Icons.hourglass_bottom,
                         title: '等待麥克風就緒',
-                        subtitle: '多數情況請設 0。藍牙開頭有數秒是空的（Windows 切換通話模式），'
-                            '開啟後會把那段丟掉、等到聲音夠大才開始收音——但帶降噪的耳機'
-                            '（如 Sony WF-C510）接通後沒人講話時也送純靜音，就緒永遠不會觸發，'
-                            '變成要先開口才會開始錄。設 0 時提示音改由第一個有訊號的片段觸發，'
-                            '實測約 0.8 秒，已經足夠',
+                        subtitle: '換裝置時會自動帶值：名稱有「耳機」給 1 秒，其他給 0。'
+                            '藍牙開頭是空的（Windows 切換通話模式，實測約 0.93 秒），這段要丟掉。'
+                            '時間到就開始收音，不管當下有沒有聲音——帶降噪的耳機沒人講話時'
+                            '本來就送純靜音，要等到有訊號會變成「等你開口」',
                         trailing: SizedBox(
                           width: 200,
                           child: Row(
@@ -243,13 +242,15 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                               SizedBox(
                                 width: 140,
                                 child: Slider(
-                                  // 實測藍牙 HFP 協商最久吃掉 6 秒，保險絲給到 8 秒
+                                  // notes: 上限收到 3 秒、刻度 0.1 秒。原本是 8 秒／0.5 秒
+                                  // 一格，但那個範圍是為了等 HFP 協商結束才訂的，
+                                  // 現在放行條件已改成「不是數位靜音」，等再久也沒有用；
+                                  // 0.3 秒這種常用值反而選不到
                                   value: data.recordWarmupMs
-                                      .clamp(0, 8000)
+                                      .clamp(0, 3000)
                                       .toDouble(),
-                                  min: 0,
-                                  max: 8000,
-                                  divisions: 16,
+                                  max: 3000,
+                                  divisions: 30,
                                   onChanged: (val) => ref
                                       .read(settingsControllerProvider.notifier)
                                       .setRecordWarmupMs(val.round()),

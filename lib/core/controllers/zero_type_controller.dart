@@ -10,6 +10,7 @@ import 'package:zero_type/core/services/speech_recognition_service.dart';
 import 'package:zero_type/core/state/zero_type_state.dart';
 import 'package:zero_type/features/history/entities/transcription_record.dart';
 import 'package:zero_type/features/history/presentation/controllers/history_controller.dart';
+import 'package:zero_type/features/log/log_controller.dart';
 import 'package:zero_type/features/model_config/presentation/controllers/model_config_controller.dart';
 import 'package:zero_type/features/prompt/presentation/controllers/prompt_controller.dart';
 import 'package:zero_type/features/dictionary/presentation/controllers/dictionary_controller.dart';
@@ -19,6 +20,10 @@ final zeroTypeControllerProvider =
 
 class ZeroTypeController extends Notifier<ZeroTypeState> {
   late final RecordingService _recordingService;
+
+  /// notes: 訊息寫進紀錄頁，不再用「overlay 顯示 2~3 秒」當 UI —— 那種延遲會把
+  /// 流程整個卡住（錯誤要等 3 秒才回到閒置，期間熱鍵沒有反應），訊息也留不下來。
+  LogController get _log => ref.read(logControllerProvider.notifier);
   bool _cancelled = false;
   DateTime? _recordingStartTime;
   Timer? _maxDurationTimer;
@@ -90,13 +95,10 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
     if (config.providerId == null || config.providerId!.isEmpty ||
         config.apiKey == null || config.apiKey!.isEmpty ||
         config.modelId == null || config.modelId!.isEmpty) {
-      await _showNativeOverlay('error', '請先完成語音辨識模型設定');
+      _log.error('請先完成語音辨識模型設定');
       await soundService.playCancelSound();
-      await Future.delayed(const Duration(seconds: 3));
-      if (ref.mounted && !_cancelled) {
-        state = const ZeroTypeState();
-        await _hideNativeOverlay();
-      }
+      state = const ZeroTypeState();
+      await _hideNativeOverlay();
       return;
     }
 
@@ -118,23 +120,17 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
 
     if (!ref.mounted || _cancelled) return;
     if (!isAccessibilityOk) {
-      await _showNativeOverlay('error', '請先授權輔助使用權限');
+      _log.error('請先授權輔助使用權限');
       await soundService.playCancelSound();
-      await Future.delayed(const Duration(seconds: 3));
-      if (ref.mounted && !_cancelled) {
-        state = const ZeroTypeState();
-        await _hideNativeOverlay();
-      }
+      state = const ZeroTypeState();
+      await _hideNativeOverlay();
       return;
     }
     if (!hasPermission) {
-      await _showNativeOverlay('error', '請先授權麥克風權限');
+      _log.error('請先授權麥克風權限');
       await soundService.playCancelSound();
-      await Future.delayed(const Duration(seconds: 3));
-      if (ref.mounted && !_cancelled) {
-        state = const ZeroTypeState();
-        await _hideNativeOverlay();
-      }
+      state = const ZeroTypeState();
+      await _hideNativeOverlay();
       return;
     }
 
@@ -194,16 +190,9 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
     } catch (e, st) {
       print('[ZeroType] startRecording failed: $e\n$st');
       if (!ref.mounted || _cancelled) return;
-      state = state.copyWith(
-        status: ZeroTypeStatus.error,
-        errorMessage: '錄音啟動失敗：$e',
-      );
-      await _showNativeOverlay('error', '錄音啟動失敗');
-      await Future.delayed(const Duration(seconds: 3));
-      if (ref.mounted && !_cancelled) {
-        state = const ZeroTypeState();
-        await _hideNativeOverlay();
-      }
+      _log.error('錄音啟動失敗：$e');
+      state = const ZeroTypeState();
+      await _hideNativeOverlay();
     }
   }
 
@@ -328,12 +317,11 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
         : null;
 
     try {
-      final stopFuture = _recordingService.stopRecording();
-      final soundFuture = soundService.playStopSound();
+      // notes: 停止音改到貼上完成之後才播（見下方）—— 它真正要通知的是
+      // 「文字已經進到你的欄位」，不是「錄音停了」。中間還有辨識要跑好幾秒，
+      // 在這裡響只會讓人以為已經好了。
+      final filePath = await _recordingService.stopRecording();
       soundService.resumeMusic();
-
-      final filePath = await stopFuture;
-      await soundFuture;
 
       if (!ref.mounted || _cancelled) {
         state = const ZeroTypeState();
@@ -341,14 +329,11 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
         return;
       }
       if (filePath == null) {
-        // 錄到的東西沒有人聲（見 kSpeechRms）。要講出來，不然使用者只會看到
-        // 什麼都沒發生，還以為熱鍵壞了。
-        await _showNativeOverlay('error', '沒有偵測到語音');
-        await Future.delayed(const Duration(seconds: 2));
-        if (ref.mounted && !_cancelled) {
-          state = const ZeroTypeState();
-          await _hideNativeOverlay();
-        }
+        // 整段都是靜音（見 hasAnySound），或麥克風根本沒送出資料。
+        // 要講出來，不然使用者只會看到什麼都沒發生，還以為熱鍵壞了。
+        _log.error('沒有錄到聲音，這次沒有送出辨識');
+        state = const ZeroTypeState();
+        await _hideNativeOverlay();
         return;
       }
 
@@ -363,6 +348,11 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
         await _recordingService.deleteFile(filePath);
         throw Exception('未能辨識出任何文字');
       }
+
+      // notes: 提示音在這裡響，不等貼上完成 —— 逐字稿已經到手，剩下的搬音檔、
+      // 寫歷史、刷新頁面、寫剪貼簿、等 150ms、送 Ctrl+V 加起來約半秒，
+      // 等它們跑完才響會慢半拍。不 await，播放本身也不該卡住流程。
+      unawaited(soundService.playStopSound());
 
       // Move audio to history dir and save record
       final historyRepo = historyRepository;
@@ -400,27 +390,16 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       const channel = MethodChannel('com.zerotype.app/keyboard');
       await channel.invokeMethod('simulatePaste');
 
-      await _showNativeOverlay('done', '已完成');
-      await Future.delayed(const Duration(seconds: 2));
-
-      if (ref.mounted && !_cancelled) {
-        state = const ZeroTypeState();
-        await _hideNativeOverlay();
-      }
+      _log.info('已輸出：${result.text}');
+      state = const ZeroTypeState();
+      await _hideNativeOverlay();
     } catch (e, st) {
       print('[ZeroType] ERROR in _stopAndProcess: $e\n$st');
       if (!ref.mounted || _cancelled) return;
-      state = state.copyWith(
-        status: ZeroTypeStatus.error,
-        errorMessage: e.toString(),
-      );
-      await _showNativeOverlay('error', '處理失敗：$e');
+      _log.error('處理失敗：$e');
       await soundService.resumeMusic();
-      await Future.delayed(const Duration(seconds: 3));
-      if (ref.mounted && !_cancelled) {
-        state = const ZeroTypeState();
-        await _hideNativeOverlay();
-      }
+      state = const ZeroTypeState();
+      await _hideNativeOverlay();
     }
   }
 
