@@ -30,8 +30,14 @@ class HotkeyService {
     if (json != null) {
       try {
         final Map<String, dynamic> map = jsonDecode(json);
-        _currentHotkey = HotKey.fromJson(map);
-        return;
+        final saved = HotKey.fromJson(map);
+        // notes: 舊版曾允許存下「單獨修飾鍵」(如單按右 Win)，那種熱鍵註冊後擋不住
+        // 開始選單，載入時直接丟掉退回預設值。
+        if (!_isModifierOnly(saved)) {
+          _currentHotkey = saved;
+          return;
+        }
+        print('[HotkeyService] Discarding modifier-only hotkey: $saved');
       } catch (e) {
         print('[HotkeyService] Error loading hotkey: $e');
       }
@@ -43,6 +49,20 @@ class HotkeyService {
       modifiers: [HotKeyModifier.alt],
       scope: HotKeyScope.system,
     );
+  }
+
+  static bool _isModifierOnly(HotKey hotkey) {
+    final modifierKeys = {
+      PhysicalKeyboardKey.metaLeft,
+      PhysicalKeyboardKey.metaRight,
+      PhysicalKeyboardKey.controlLeft,
+      PhysicalKeyboardKey.controlRight,
+      PhysicalKeyboardKey.altLeft,
+      PhysicalKeyboardKey.altRight,
+      PhysicalKeyboardKey.shiftLeft,
+      PhysicalKeyboardKey.shiftRight,
+    };
+    return modifierKeys.contains(hotkey.key);
   }
 
   Future<void> _saveHotkey(HotKey hotkey) async {
