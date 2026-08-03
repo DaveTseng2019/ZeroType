@@ -20,8 +20,7 @@ class SettingsState {
     this.maxRecordingMinutes = 1,
     this.inputDeviceId = '',
     this.inputDevices = const <InputDevice>[],
-    this.noiseGateEnabled = false,
-    this.noiseGateStrength = kDefaultNoiseGateStrength,
+    this.noiseGateStrength = 0,
     this.defaultDeviceLabel = '',
     this.defaultCommsDeviceLabel = '',
     this.recordWarmupMs = 0,
@@ -41,10 +40,12 @@ class SettingsState {
 
   /// 空字串 = 系統預設輸入裝置
   final String inputDeviceId;
-  final List<InputDevice> inputDevices;
-  final bool noiseGateEnabled;
 
-  /// 噪音門檻強度，見 recording_service.dart 的 applyNoiseGate marginFactor
+  /// 系統可用的錄音輸入裝置
+  final List<InputDevice> inputDevices;
+
+  /// 噪音門檻強度，0 = 不過濾（預設）。
+  /// 見 recording_service.dart 的 applyNoiseGate marginFactor
   final double noiseGateStrength;
 
   /// 系統預設錄音裝置的名稱（藍牙耳機常只被設成通訊裝置，所以兩個角色分開顯示）
@@ -68,7 +69,6 @@ class SettingsState {
     int? maxRecordingMinutes,
     String? inputDeviceId,
     List<InputDevice>? inputDevices,
-    bool? noiseGateEnabled,
     double? noiseGateStrength,
     String? defaultDeviceLabel,
     String? defaultCommsDeviceLabel,
@@ -90,7 +90,6 @@ class SettingsState {
       maxRecordingMinutes: maxRecordingMinutes ?? this.maxRecordingMinutes,
       inputDeviceId: inputDeviceId ?? this.inputDeviceId,
       inputDevices: inputDevices ?? this.inputDevices,
-      noiseGateEnabled: noiseGateEnabled ?? this.noiseGateEnabled,
       noiseGateStrength: noiseGateStrength ?? this.noiseGateStrength,
       defaultDeviceLabel: defaultDeviceLabel ?? this.defaultDeviceLabel,
       defaultCommsDeviceLabel:

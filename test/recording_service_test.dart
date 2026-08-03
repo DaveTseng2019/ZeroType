@@ -82,6 +82,34 @@ void main() {
     });
   });
 
+  // 空音訊送進 chat 型語音模型，它會憑空編出一整段內容（實測 gemini-3-flash、
+  // gemini-2.5-flash、gemini-2.5-pro 分別編出會議議程、訪談節目、電影台詞）。
+  // 換模型擋不住，只能在送出前用這個判斷把它擋下來。
+  group('speechDuration', () {
+    test('純靜音算不出人聲，不會送去辨識', () {
+      expect(speechDuration(pcmFrames(List.filled(50, 0))), Duration.zero);
+      // 極微弱底噪也一樣要擋掉
+      expect(speechDuration(pcmFrames(List.filled(50, 3))), Duration.zero);
+    });
+
+    test('只累計達到人聲門檻的音框', () {
+      // 20ms 一框：10 框人聲 + 10 框底噪 → 只算前者
+      final pcm = pcmFrames([...List.filled(10, 500), ...List.filled(10, 30)]);
+      expect(speechDuration(pcm), const Duration(milliseconds: 200));
+    });
+
+    test('正常錄音過得了門檻，麥克風幾乎沒收到的那種過不了', () {
+      // 實測正常錄音在 RMS 100 以上有 980~1720ms
+      expect(speechDuration(pcmFrames(List.filled(49, 300))),
+          greaterThan(kMinSpeech));
+      // 實測失敗那筆只有 360ms —— 模型對它連跑三次編出三段不同的內容
+      expect(speechDuration(pcmFrames(List.filled(18, 300))),
+          lessThan(kMinSpeech));
+      expect(
+          speechDuration(pcmFrames(List.filled(150, 0))), lessThan(kMinSpeech));
+    });
+  });
+
   group('MicReadyGate', () {
     final t0 = DateTime(2026, 7, 30, 10, 0, 0);
     final farDeadline = t0.add(const Duration(seconds: 30));
@@ -127,12 +155,23 @@ void main() {
       }
     });
 
-    test('逾時就放行，並且不吞掉當下這個 chunk', () {
+    test('逾時就放行底噪很低的麥克風，並且不吞掉當下這個 chunk', () {
       final gate = MicReadyGate(deadline: t0.add(const Duration(seconds: 1)));
-      expect(gate.accept(chunk(0), t0), isFalse);
-      // 保險絲燒斷：麥克風真的沒訊號也不能無限等
-      expect(gate.accept(chunk(0), t0.add(const Duration(seconds: 2))), isTrue);
+      expect(gate.accept(chunk(6), t0), isFalse);
+      // 保險絲燒斷：內建麥克風的底噪(5~9)永遠跨不過 kSilentChunkRms，不能無限等
+      expect(gate.accept(chunk(6), t0.add(const Duration(seconds: 2))), isTrue);
       expect(gate.pending.length, 1);
+    });
+
+    test('逾時也不放行全零 —— 檔案開頭那 1.5 秒死區就是這樣進來的', () {
+      final gate = MicReadyGate(deadline: t0.add(const Duration(seconds: 1)));
+      // 實測這支裝置送了 9.5 秒全零，比 8 秒的保險絲還久。
+      // 舊行為是保險絲一斷就照收，於是死區被寫進錄音、提示音也早響。
+      expect(gate.accept(chunk(0), t0.add(const Duration(seconds: 2))), isFalse);
+      expect(gate.accept(chunk(0), t0.add(const Duration(seconds: 9))), isFalse);
+      expect(gate.pending, isEmpty);
+      // 訊號一接上（就算只有底噪）才放行
+      expect(gate.accept(chunk(6), t0.add(const Duration(seconds: 10))), isTrue);
     });
   });
 

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -10,6 +9,7 @@ import 'package:zero_type/core/services/recording_service.dart';
 import 'package:zero_type/core/services/speech_recognition_service.dart';
 import 'package:zero_type/core/state/zero_type_state.dart';
 import 'package:zero_type/features/history/entities/transcription_record.dart';
+import 'package:zero_type/features/history/presentation/controllers/history_controller.dart';
 import 'package:zero_type/features/model_config/presentation/controllers/model_config_controller.dart';
 import 'package:zero_type/features/prompt/presentation/controllers/prompt_controller.dart';
 import 'package:zero_type/features/dictionary/presentation/controllers/dictionary_controller.dart';
@@ -37,6 +37,16 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
     return const ZeroTypeState();
   }
 
+  // notes: 攔 setter 而不是在各個轉換點呼叫 —— 系統匣圖示在視窗隱藏時是唯一的
+  // 錄音提示，掛在 widget 的 listener 要等 frame，隱藏時不保證會跑
+  @override
+  set state(ZeroTypeState value) {
+    final was = stateOrNull?.status == ZeroTypeStatus.recording;
+    final now = value.status == ZeroTypeStatus.recording;
+    super.state = value;
+    if (was != now) unawaited(trayService.setRecording(now));
+  }
+
   Future<void> toggleRecording() async {
     print('[ZeroTypeController] Hotkey triggered! Current status: ${state.status}');
     if (state.status == ZeroTypeStatus.recording) {
@@ -54,7 +64,8 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
     _maxDurationTimer?.cancel();
     _maxDurationTimer = null;
     _cancelled = true;
-    if (state.status == ZeroTypeStatus.recording) {
+    if (state.status == ZeroTypeStatus.recording ||
+        state.status == ZeroTypeStatus.warmingUp) {
       state = state.copyWith(status: ZeroTypeStatus.cancelling);
       unawaited(_showNativeOverlay('cancelling', '取消中'));
       await _recordingService.cancelRecording();
@@ -67,6 +78,13 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
 
   Future<void> _startRecording() async {
     _cancelled = false;
+
+    // 趁焦點還在使用者剛剛打字的地方，先把貼上目標記下來。
+    // 要在任何 overlay／視窗操作之前，不然記到的就不是原本那個視窗了。
+    const keyboardChannel = MethodChannel('com.zerotype.app/keyboard');
+    try {
+      await keyboardChannel.invokeMethod<void>('rememberPasteTarget');
+    } catch (_) {} // macOS 端沒有這個方法，忽略
 
     final config = await ref.read(speechProviderControllerProvider.future);
     if (config.providerId == null || config.providerId!.isEmpty ||
@@ -127,49 +145,43 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
           appPrefs.getInt(AppConstants.recordWarmupMsKey) ?? 0,
     );
 
-    // [優化2] 音效不阻塞錄音啟動
+    // [優化2] 音效不阻塞錄音啟動。
+    // 提示音一律由 onCaptureStart 觸發（不論有沒有開等待）—— 那一刻才真的收得到
+    // 聲音，也才不會被藍牙切 HFP 的那一下吃掉。
     unawaited(soundService.pauseMusic());
-    if (warmupTimeout == Duration.zero) {
-      unawaited(soundService.playStartSound());
-
-      // Windows 開啟音訊擷取會壓掉正在播的開始音，先給音效一點頭段
-      if (Platform.isWindows) {
-        await Future.delayed(const Duration(milliseconds: 250));
-      }
-    }
 
     if (!ref.mounted || _cancelled) return;
-    state = state.copyWith(status: ZeroTypeStatus.recording, amplitude: 0.0);
-    _recordingStartTime = DateTime.now();
-
-    // Start max-duration safety timer from user setting (default 1 min, max 5 min)
-    final maxMinutes = appPrefs
-        .getInt(AppConstants.maxRecordingMinutesKey) ?? 1;
-    _maxDurationTimer = Timer(Duration(minutes: maxMinutes), () {
-      if (state.status == ZeroTypeStatus.recording) {
-        print('[ZeroType] Max recording duration reached, auto-stopping.');
-        _stopAndProcess();
-      }
-    });
+    // 等待麥克風就緒時先進 warmingUp：圖示、提示都還不能說「錄音中」，
+    // 因為這段收到的音訊會被 MicReadyGate 丟掉，使用者這時講話是白講。
+    final warming = warmupTimeout > Duration.zero;
+    state = state.copyWith(
+      status: warming ? ZeroTypeStatus.warmingUp : ZeroTypeStatus.recording,
+      amplitude: 0.0,
+    );
+    if (warming) {
+      _armMaxDuration();
+    } else {
+      _beginRecording();
+    }
 
     // [優化3] overlay 顯示與錄音初始化同步進行
     try {
       await Future.wait([
-        _showNativeOverlay('recording', '錄音中'),
+        _showNativeOverlay('recording', warming ? '準備中' : '錄音中'),
         _recordingService.startRecording(
           deviceId: appPrefs
               .getString(AppConstants.inputDeviceIdKey),
-          noiseGate: appPrefs
-                  .getBool(AppConstants.noiseGateEnabledKey) ??
-              false,
-          noiseGateStrength: appPrefs
-                  .getDouble(AppConstants.noiseGateStrengthKey) ??
-              kDefaultNoiseGateStrength,
+          // 0 = 不過濾，也是預設值
+          noiseGateStrength:
+              appPrefs.getDouble(AppConstants.noiseGateStrengthKey) ?? 0,
           warmupTimeout: warmupTimeout,
           onCaptureStart: () {
-            if (ref.mounted && !_cancelled) {
-              unawaited(soundService.playStartSound());
-            }
+            if (!ref.mounted || _cancelled) return;
+            unawaited(soundService.playStartSound());
+            if (state.status != ZeroTypeStatus.warmingUp) return;
+            state = state.copyWith(status: ZeroTypeStatus.recording);
+            _beginRecording();
+            unawaited(_showNativeOverlay('recording', '錄音中'));
           },
           onAmplitude: (amp) {
             if (ref.mounted && !_cancelled) {
@@ -195,6 +207,56 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
     }
   }
 
+  /// 真的開始收音的那一刻：計時基準與逾時保險絲都從這裡重算，
+  /// 等待麥克風就緒的那幾秒不該被算進錄音長度。
+  void _beginRecording() {
+    _recordingStartTime = DateTime.now();
+    _armMaxDuration();
+  }
+
+  /// Max-duration safety timer from user setting (default 1 min, max 5 min)。
+  /// warmingUp 也要蓋到 —— 麥克風若一直沒送出訊號（被靜音、被別的程式佔住），
+  /// 等待是不會自己結束的，總不能讓麥克風就這樣一直開著。
+  void _armMaxDuration() {
+    _maxDurationTimer?.cancel();
+    final maxMinutes = appPrefs.getInt(AppConstants.maxRecordingMinutesKey) ?? 1;
+    _maxDurationTimer = Timer(Duration(minutes: maxMinutes), () {
+      switch (state.status) {
+        case ZeroTypeStatus.recording:
+          print('[ZeroType] Max recording duration reached, auto-stopping.');
+          _stopAndProcess();
+        case ZeroTypeStatus.warmingUp:
+          print('[ZeroType] Mic never became ready, cancelling.');
+          cancel();
+        default:
+          break;
+      }
+    });
+  }
+
+  /// 音訊那一段唯一給的指令。刻意不放任何規則或範例 —— 那些都是模型
+  /// 在聽不清楚時會拿來照抄的素材。
+  ///
+  /// notes: 一定要指定語言。只寫「Generate a transcript」時模型會直接輸出英文，
+  /// 而第二段的規則寫著「英文保留原文不翻譯」，於是英文就這樣被留到最後。
+  static const _kBareTranscribePrompt =
+      '逐字轉錄音檔內容。維持說話者原本的語言，中文一律輸出繁體中文（台灣）。\n'
+      '不要翻譯、不要說明、不要加任何前後語，只輸出轉錄結果本身。';
+
+  /// 第二段純文字處理：把使用者調過的格式規則原封不動搬過來，只加一句改寫框架，
+  /// 讓它知道處理對象是文字而不是音檔。這裡有真實文字當輸入，範例就不再是
+  /// 唯一可抄的東西了。
+  String _buildTextStagePrompt(
+    String rulesPrompt,
+    String correctionPrompt,
+    String text,
+  ) =>
+      '以下規則原本用於音訊轉錄，現在改為套用在「已經轉錄好的文字」上。\n'
+      '規則與範例只是格式參考，它們的內容不得出現在輸出中。只輸出處理後的文字。\n\n'
+      '$rulesPrompt\n\n'
+      '$correctionPrompt'
+      '--- 待處理文字 ---\n$text';
+
   Future<TranscriptionResult?> _transcribe(String filePath) async {
     final config = await ref.read(speechProviderControllerProvider.future);
     final prompt = await ref.read(speechPromptControllerProvider.future);
@@ -206,14 +268,17 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       throw Exception('請先完成語音辨識模型設定');
     }
 
-    // notes: 字典跟音訊放同一個 context 會讓模型憑空插入字典詞（見
-    // buildCorrectionPrompt 的說明）；chat 型服務商改成轉錄後第二段純文字校正，
-    // 只有 whisper（openai）維持 prompt 偏置附加
+    // notes: 跟音訊放同一個 context 的東西，模型都可能直接照抄或照著演 —— 字典詞
+    // 會被憑空插入（見 buildCorrectionPrompt），格式規則與範例則會在音訊內容偏弱時
+    // 被整段當成答案輸出（實測輸出跟 SpeechToText.prompt 的範例一字不差）。
+    // 措辭怎麼改都壓不住，所以 chat 型服務商一律兩段式：音訊那段只給最小指令，
+    // 規則、範例、字典全部移到第二段純文字處理。whisper（openai）不吃這套，維持原樣。
     final isWhisper = config.providerId == 'openai';
     final dictionaryPrompt =
         isWhisper ? await dictionaryRepo.buildDictionaryPrompt() : '';
-    final finalPrompt =
-        dictionaryPrompt.isEmpty ? prompt : '$prompt\n\n$dictionaryPrompt';
+    final audioPrompt = isWhisper
+        ? (dictionaryPrompt.isEmpty ? prompt : '$prompt\n\n$dictionaryPrompt')
+        : _kBareTranscribePrompt;
 
     final service = speechService;
     final result = await service.transcribe(
@@ -221,20 +286,19 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       apiKey: config.apiKey!,
       provider: config.providerId!,
       model: config.modelId!,
-      prompt: finalPrompt,
+      prompt: audioPrompt,
       customEndpoint: config.customEndpoint,
     );
 
     if (isWhisper || result.text.isEmpty) return result;
     final correctionPrompt = await dictionaryRepo.buildCorrectionPrompt();
-    if (correctionPrompt.isEmpty) return result;
 
     try {
       final corrected = await service.correctTranscript(
         apiKey: config.apiKey!,
         provider: config.providerId!,
         model: config.modelId!,
-        prompt: '$correctionPrompt${result.text}',
+        prompt: _buildTextStagePrompt(prompt, correctionPrompt, result.text),
         customEndpoint: config.customEndpoint,
       );
       if (corrected.text.isEmpty) return result;
@@ -271,9 +335,20 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       final filePath = await stopFuture;
       await soundFuture;
 
-      if (!ref.mounted || _cancelled || filePath == null) {
+      if (!ref.mounted || _cancelled) {
         state = const ZeroTypeState();
         await _hideNativeOverlay();
+        return;
+      }
+      if (filePath == null) {
+        // 錄到的東西沒有人聲（見 kSpeechRms）。要講出來，不然使用者只會看到
+        // 什麼都沒發生，還以為熱鍵壞了。
+        await _showNativeOverlay('error', '沒有偵測到語音');
+        await Future.delayed(const Duration(seconds: 2));
+        if (ref.mounted && !_cancelled) {
+          state = const ZeroTypeState();
+          await _hideNativeOverlay();
+        }
         return;
       }
 
@@ -312,6 +387,9 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       );
       await historyRepo.addRecord(record);
       await historyRepo.accumulateStats(record);
+      // 歷史頁若正開著,不刷新就看不到剛剛這筆(切換分頁時才會重讀)
+      ref.invalidate(historyControllerProvider);
+      ref.invalidate(historyStatsProvider);
 
       // Output
       state = state.copyWith(status: ZeroTypeStatus.done, result: result.text);

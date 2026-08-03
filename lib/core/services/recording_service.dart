@@ -92,6 +92,15 @@ double rmsOfPcm16(Uint8List pcm) {
 /// 所以等待麥克風就緒只該對藍牙開啟，其他裝置設 0（設定頁的說明有寫）。
 const double kSilentChunkRms = 20;
 
+/// 低於這個 RMS 視為「驅動還沒把訊號接上」的數位靜音。
+///
+/// 真的在收音的麥克風一定有底噪（實測最安靜的內建麥克風也有 5~9），
+/// 全零只會出現在裝置還沒開始送資料的時候。分成兩個門檻是因為
+/// [kSilentChunkRms] 那條逾時保險絲是為了救「底噪很低」的麥克風，
+/// 但它不該讓全零的死區也放行 —— 實測這支裝置會送 9.5 秒的全零，
+/// 比 8 秒的保險絲還久，剩下的 1.5 秒就這樣被錄進檔案開頭。
+const double kDeadChunkRms = 1.0;
+
 /// 要連續多久不靜音才算麥克風真的活了。
 ///
 /// 實測 HFP 協商快完成時會有一下爆音：單一 chunk 衝過門檻，接著又靜音一整秒。
@@ -114,7 +123,8 @@ class MicReadyGate {
 
   /// 回 true 代表就緒；此時 [chunk] 已經放進 [pending]，呼叫端直接倒出來即可。
   bool accept(Uint8List chunk, DateTime now) {
-    final loud = rmsOfPcm16(chunk) >= kSilentChunkRms;
+    final rms = rmsOfPcm16(chunk);
+    final loud = rms >= kSilentChunkRms;
     if (loud) {
       _loudSince ??= now;
       pending.add(chunk);
@@ -125,11 +135,46 @@ class MicReadyGate {
     }
 
     final held = _loudSince != null && now.difference(_loudSince!) >= hold;
-    if (!held && now.isBefore(deadline)) return false;
+    // 保險絲燒斷也不收全零：那是還沒接上的訊號，不是「安靜的麥克風」。
+    // 收了只會讓檔案開頭多一段死區，提示音也會在麥克風真的活過來之前就響。
+    if (!held && (now.isBefore(deadline) || rms < kDeadChunkRms)) return false;
 
     if (!loud) pending.add(chunk); // 逾時放行：這個 chunk 還沒進候選
     return true;
   }
+}
+
+/// 「像人聲」的音框門檻與最短累計時長。
+///
+/// 空音訊送進 chat 型語音模型，它會憑空編出一整段內容 —— 實測
+/// gemini-3-flash-preview、gemini-2.5-flash、gemini-2.5-pro 對純靜音分別編出
+/// 會議議程、訪談節目、電影台詞，換模型解決不了，只能不要送出去。
+///
+/// 門檻用實測校準：正常錄音在 RMS 100 以上有 980～1720ms；一筆麥克風幾乎沒收到
+/// 東西的只有 360ms，模型對它連跑三次編出三段不同的內容。500ms 落在中間。
+///
+/// notes: 寧可誤擋也不要誤放 —— 被擋下來使用者看得到「沒有偵測到語音」，重錄就好；
+/// 放行的幻覺卻是一段像模像樣的文字，直接貼進文件裡，不一定會被發現。
+/// 代價是單字級的短句（「好」約 200~300ms）會被擋掉。
+const double kSpeechRms = 100;
+const Duration kMinSpeech = Duration(milliseconds: 500);
+
+/// [pcm] 裡 RMS 達到 [kSpeechRms] 的音框累計時長。
+Duration speechDuration(Uint8List pcm, {int sampleRate = kRecordSampleRate}) {
+  final frameSamples = sampleRate * _kFrameMs ~/ 1000;
+  final total = pcm.lengthInBytes ~/ 2;
+  final bd = ByteData.sublistView(pcm);
+  var frames = 0;
+  for (var f = 0; f < total ~/ frameSamples; f++) {
+    var sum = 0.0;
+    final start = f * frameSamples;
+    for (var i = start; i < start + frameSamples; i++) {
+      final s = bd.getInt16(i * 2, Endian.little);
+      sum += s * s.toDouble();
+    }
+    if (sqrt(sum / frameSamples) >= kSpeechRms) frames++;
+  }
+  return Duration(milliseconds: frames * _kFrameMs);
 }
 
 /// 從 [devices] 找出 [deviceId] 指定的裝置。
@@ -238,8 +283,8 @@ class RecordingService {
   String? _currentFilePath;
   StreamSubscription<Uint8List>? _streamSubscription;
   BytesBuilder? _pcm;
-  bool _noiseGate = false;
-  double _noiseGateStrength = kDefaultNoiseGateStrength;
+  /// 0 代表不過濾。見 [startRecording] 的 noiseGateStrength。
+  double _noiseGateStrength = 0;
   DateTime _lastAmplitudeAt = DateTime.fromMillisecondsSinceEpoch(0);
 
   Future<bool> checkPermission() async {
@@ -264,8 +309,8 @@ class RecordingService {
   Future<void> startRecording({
     AmplitudeCallback? onAmplitude,
     String? deviceId,
-    bool noiseGate = false,
-    double noiseGateStrength = kDefaultNoiseGateStrength,
+    /// 噪音門檻強度，0 代表不過濾（預設）。
+    double noiseGateStrength = 0,
     Duration warmupTimeout = Duration.zero,
     /// 真正開始收音的那一刻（提示音在這裡響，才是「可以講了」）
     void Function()? onCaptureStart,
@@ -278,7 +323,6 @@ class RecordingService {
     }
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     _currentFilePath = '${dir.path}/zerotype_$timestamp.wav';
-    _noiseGate = noiseGate;
     _noiseGateStrength = noiseGateStrength;
 
     final device = (deviceId == null || deviceId.isEmpty)
@@ -291,7 +335,7 @@ class RecordingService {
     print(
       '[RecordingService] starting at $_currentFilePath '
       '(device: ${device?.label ?? 'default'}, '
-      'gate: $noiseGate x$noiseGateStrength, '
+      'gate: ${noiseGateStrength > 0 ? 'x$noiseGateStrength' : 'off'}, '
       'warmupTimeout: ${warmupTimeout.inMilliseconds}ms)',
     );
 
@@ -318,21 +362,33 @@ class RecordingService {
         ? MicReadyGate(deadline: openedAt.add(warmupTimeout))
         : null;
     var waiting = gate != null;
+    // [onCaptureStart] 跟等不等待無關，只代表「訊號真的進來了」，而且只發一次。
+    //
+    // notes: 不能改成開串流時就發 —— 提示音是在這個 callback 裡播的，而藍牙從
+    // A2DP 切到 HFP 的那一下會把正在播的聲音整個吃掉（實測要 1.5~9.6 秒，
+    // 靠固定延遲賭不贏）。等到收得到資料才播，才聽得見。
+    var announced = false;
+    void announce(Duration waited) {
+      announced = true;
+      print('[RecordingService] capture started after '
+          '${waited.inMilliseconds}ms');
+      onCaptureStart?.call();
+    }
 
     _streamSubscription = stream.listen((chunk) {
       if (waiting) {
         if (!gate!.accept(chunk, DateTime.now())) return; // 還在協商，丟掉
         waiting = false;
-        final waited = DateTime.now().difference(openedAt);
-        print('[RecordingService] capture started after '
-            '${waited.inMilliseconds}ms');
-        onCaptureStart?.call();
+        announce(DateTime.now().difference(openedAt));
         for (final c in gate.pending) {
           _pcm?.add(c);
         }
         gate.pending.clear();
         if (onAmplitude != null) _emitAmplitude(chunk, onAmplitude);
         return; // 這個 chunk 已經在 pending 裡進去了
+      }
+      if (!announced && rmsOfPcm16(chunk) >= kDeadChunkRms) {
+        announce(DateTime.now().difference(openedAt));
       }
       _pcm?.add(chunk);
       if (onAmplitude != null) _emitAmplitude(chunk, onAmplitude);
@@ -382,9 +438,19 @@ class RecordingService {
       return null;
     }
 
-    final processed = _noiseGate
+    final processed = _noiseGateStrength > 0
         ? applyNoiseGate(pcm, marginFactor: _noiseGateStrength)
         : pcm;
+
+    // 沒有人聲就不要送去辨識 —— 模型會憑空編一段出來（見 [kSpeechRms]）。
+    // 回 null 走的是既有的「沒錄到東西」路徑，不另外開一種狀態。
+    final speech = speechDuration(processed);
+    if (speech < kMinSpeech) {
+      print('[RecordingService] no speech (${speech.inMilliseconds}ms), '
+          'discarding ${pcm.length} bytes');
+      return null;
+    }
+
     await File(_currentFilePath!).writeAsBytes(buildWav(processed));
     print(
       '[RecordingService] wrote ${pcm.length} bytes PCM → $_currentFilePath',

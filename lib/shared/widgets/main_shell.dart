@@ -3,7 +3,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:zero_type/core/controllers/zero_type_controller.dart';
 import 'package:zero_type/core/di/injection.dart';
+import 'package:zero_type/core/state/zero_type_state.dart';
 import 'package:zero_type/features/dictionary/presentation/pages/dictionary_page.dart';
 import 'package:zero_type/features/history/presentation/controllers/history_controller.dart';
 import 'package:zero_type/features/settings/presentation/controllers/settings_controller.dart';
@@ -121,16 +123,10 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
             child: Row(
               children: [
                 Expanded(
-                  child: DragToMoveArea(
-                    child: Center(
-                      child: Text(
-                        'Zero Type',
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 0.5,
-                            ),
-                      ),
-                    ),
+                  // notes: 只換這顆標題，視窗標題不動 —— app_lifecycle 的
+                  // FindWindowW 靠 'ZeroType' 這個標題認既有視窗
+                  child: const DragToMoveArea(
+                    child: Center(child: _TitleLabel()),
                   ),
                 ),
                 // macOS 仍有原生紅綠燈按鈕,只在 Windows/Linux 顯示自訂按鈕
@@ -218,6 +214,39 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _TitleLabel extends ConsumerWidget {
+  const _TitleLabel();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final recording = ref.watch(zeroTypeControllerProvider
+        .select((s) => s.status == ZeroTypeStatus.recording));
+    final style = Theme.of(context).textTheme.titleSmall?.copyWith(
+          fontWeight: FontWeight.bold,
+          letterSpacing: 0.5,
+          color: recording ? const Color(0xFFE53935) : null,
+        );
+
+    if (!recording) return Text('Zero Type', style: style);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 8,
+          height: 8,
+          decoration: const BoxDecoration(
+            color: Color(0xFFE53935),
+            shape: BoxShape.circle,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text('錄音中', style: style),
+      ],
     );
   }
 }

@@ -1,5 +1,8 @@
 enum ZeroTypeStatus {
   idle,
+  /// 已開麥克風，但還在等它真的送出聲音（藍牙 HFP 協商）。
+  /// 這段還不算錄音：圖示不變色，收到的音訊會被丟掉。
+  warmingUp,
   recording,
   cancelling,
   saving,

@@ -78,6 +78,7 @@ class _OverlayPill extends StatelessWidget {
   final VoidCallback onCancel;
 
   Color get _dotColor => switch (state.status) {
+        ZeroTypeStatus.warmingUp => const Color(0xFFFFAA00),
         ZeroTypeStatus.recording => const Color(0xFF6C63FF),
         ZeroTypeStatus.cancelling => Colors.grey,
         ZeroTypeStatus.saving => const Color(0xFFFFAA00),
@@ -88,6 +89,7 @@ class _OverlayPill extends StatelessWidget {
       };
 
   String get _label => switch (state.status) {
+        ZeroTypeStatus.warmingUp => '準備中',
         ZeroTypeStatus.recording => '錄音中',
         ZeroTypeStatus.cancelling => '取消中',
         ZeroTypeStatus.saving => '擷取中',

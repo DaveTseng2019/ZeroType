@@ -40,11 +40,9 @@ class SettingsController extends AsyncNotifier<SettingsState> {
       final maxRecordingMinutes = prefs.getInt(AppConstants.maxRecordingMinutesKey) ?? 1;
       final inputDeviceId = prefs.getString(AppConstants.inputDeviceIdKey) ?? '';
       final devices = await _loadDevices();
-      final noiseGateEnabled =
-          prefs.getBool(AppConstants.noiseGateEnabledKey) ?? false;
+      // 0 = 不過濾，也是預設值
       final noiseGateStrength =
-          prefs.getDouble(AppConstants.noiseGateStrengthKey) ??
-              kDefaultNoiseGateStrength;
+          prefs.getDouble(AppConstants.noiseGateStrengthKey) ?? 0;
 
       print('[SettingsController] Build complete.');
       return SettingsState(
@@ -62,7 +60,6 @@ class SettingsController extends AsyncNotifier<SettingsState> {
         inputDevices: devices.list,
         defaultDeviceLabel: devices.defaultLabel,
         defaultCommsDeviceLabel: devices.commsLabel,
-        noiseGateEnabled: noiseGateEnabled,
         noiseGateStrength: noiseGateStrength,
         recordWarmupMs: prefs.getInt(AppConstants.recordWarmupMsKey) ?? 0,
       );
@@ -211,15 +208,6 @@ class SettingsController extends AsyncNotifier<SettingsState> {
     final currentState = state.value;
     if (currentState != null) {
       state = AsyncData(currentState.copyWith(inputDeviceId: deviceId));
-    }
-  }
-
-  Future<void> toggleNoiseGate(bool value) async {
-    await appPrefs
-        .setBool(AppConstants.noiseGateEnabledKey, value);
-    final currentState = state.value;
-    if (currentState != null) {
-      state = AsyncData(currentState.copyWith(noiseGateEnabled: value));
     }
   }
 

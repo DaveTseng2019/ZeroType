@@ -272,71 +272,46 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                       error: (_, __) => const SizedBox.shrink(),
                     ),
                     const Divider(height: 1, indent: 56),
-                    // Noise Gate
+                    // Noise Gate（0 = 不過濾，不另外做開關）
                     settings.when(
                       data: (data) => _SettingTile(
                         icon: Icons.graphic_eq,
                         title: '濾除背景噪音',
-                        subtitle: '把明顯低於環境噪音底的片段壓下去，適合底噪偏大的麥克風',
-                        trailing: Switch(
-                          value: data.noiseGateEnabled,
-                          onChanged: (val) => ref
-                              .read(settingsControllerProvider.notifier)
-                              .toggleNoiseGate(val),
+                        subtitle: '門檻 = 環境噪音底 × 強度，把明顯低於底噪的片段壓下去。'
+                            '0 表示不過濾（預設）；太大會連氣音和小聲的字一起吃掉，'
+                            '也可能把音訊挖得太空讓辨識憑空生成內容',
+                        trailing: SizedBox(
+                          width: 200,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 140,
+                                child: Slider(
+                                  value: data.noiseGateStrength.clamp(0.0, 6.0),
+                                  max: 6.0,
+                                  divisions: 12,
+                                  onChanged: (val) => ref
+                                      .read(settingsControllerProvider.notifier)
+                                      .setNoiseGateStrength(val),
+                                ),
+                              ),
+                              Text(
+                                data.noiseGateStrength <= 0
+                                    ? '關閉'
+                                    : data.noiseGateStrength.toStringAsFixed(1),
+                                style: TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color:
+                                      Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                       loading: () => const _LoadingTile(),
-                      error: (_, __) => const SizedBox.shrink(),
-                    ),
-                    // Noise Gate Strength（關掉時整條隱藏，沒作用的旋鈕不必顯示）
-                    settings.when(
-                      data: (data) => data.noiseGateEnabled
-                          ? Column(
-                              children: [
-                                const Divider(height: 1, indent: 56),
-                                _SettingTile(
-                                  icon: Icons.tune,
-                                  title: '濾除強度',
-                                  subtitle: '門檻 = 環境噪音底 × 強度。數值越大濾得越乾淨，'
-                                      '太大會連氣音和小聲的字一起吃掉（預設 3.0）',
-                                  trailing: SizedBox(
-                                    width: 200,
-                                    child: Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        SizedBox(
-                                          width: 140,
-                                          child: Slider(
-                                            value: data.noiseGateStrength
-                                                .clamp(1.5, 6.0),
-                                            min: 1.5,
-                                            max: 6.0,
-                                            divisions: 9,
-                                            onChanged: (val) => ref
-                                                .read(settingsControllerProvider
-                                                    .notifier)
-                                                .setNoiseGateStrength(val),
-                                          ),
-                                        ),
-                                        Text(
-                                          data.noiseGateStrength
-                                              .toStringAsFixed(1),
-                                          style: TextStyle(
-                                            fontSize: 13,
-                                            fontWeight: FontWeight.w600,
-                                            color: Theme.of(context)
-                                                .colorScheme
-                                                .primary,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            )
-                          : const SizedBox.shrink(),
-                      loading: () => const SizedBox.shrink(),
                       error: (_, __) => const SizedBox.shrink(),
                     ),
                   ],
@@ -1085,6 +1060,9 @@ class _UpdateCheckTileState extends State<_UpdateCheckTile> {
   }
 }
 
+/// 圖示上那個 Ø 的橘色
+const kBrandOrange = Color(0xFFEB5E14);
+
 class _InputDeviceTile extends StatelessWidget {
   /// 空字串 = 系統預設
   final String selectedId;
@@ -1135,16 +1113,17 @@ class _InputDeviceTile extends StatelessWidget {
           isExpanded: true,
           underline: const SizedBox.shrink(),
           borderRadius: BorderRadius.circular(12),
+          // 用品牌橘標出目前實際在錄的裝置 —— 這一項選錯，後面所有問題都在追鬼
           selectedItemBuilder: (_) => labels.values.map((label) {
             return Align(
               alignment: Alignment.centerRight,
               child: Text(
                 label,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(
+                style: const TextStyle(
                   fontSize: 13,
-                  fontWeight: FontWeight.w500,
-                  color: cs.onSurface,
+                  fontWeight: FontWeight.w600,
+                  color: kBrandOrange,
                 ),
               ),
             );
