@@ -230,10 +230,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                       data: (data) => _SettingTile(
                         icon: Icons.hourglass_bottom,
                         title: '等待麥克風就緒',
-                        subtitle: '只給藍牙耳機麥克風用，其他麥克風請設 0。'
-                            '藍牙開頭有數秒是空的（Windows 切換通話模式，實測 1.5~9 秒不等），'
-                            '開啟後會等到真的有聲音才開始收音，提示音也改在那一刻響。'
-                            '這裡設的是最長等多久，等不到就照樣開始',
+                        subtitle: '多數情況請設 0。藍牙開頭有數秒是空的（Windows 切換通話模式），'
+                            '開啟後會把那段丟掉、等到聲音夠大才開始收音——但帶降噪的耳機'
+                            '（如 Sony WF-C510）接通後沒人講話時也送純靜音，就緒永遠不會觸發，'
+                            '變成要先開口才會開始錄。設 0 時提示音改由第一個有訊號的片段觸發，'
+                            '實測約 0.8 秒，已經足夠',
                         trailing: SizedBox(
                           width: 200,
                           child: Row(
