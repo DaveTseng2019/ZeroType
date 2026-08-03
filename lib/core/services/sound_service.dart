@@ -2,6 +2,7 @@ import 'dart:ffi';
 import 'dart:io';
 
 import 'package:ffi/ffi.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zero_type/core/constants/app_constants.dart';
 
@@ -91,8 +92,19 @@ class SoundService {
     await _play(path);
   }
 
-  /// 暫停背景音樂 (Apple Music & Spotify)
+  /// Windows 端的媒體控制走原生 —— play/pause 是切換鍵，原生那邊會先用
+  /// peak meter 確認真的有東西在出聲才按，並記住是不是自己按的，
+  /// 沒暫停過就不會去恢復。
+  static const _keyboardChannel = MethodChannel('com.zerotype.app/keyboard');
+
+  /// 暫停背景音樂（macOS: Apple Music & Spotify；Windows: 媒體鍵）
   Future<void> pauseMusic() async {
+    if (Platform.isWindows) {
+      try {
+        await _keyboardChannel.invokeMethod<void>('pauseMedia');
+      } catch (_) {}
+      return;
+    }
     if (!Platform.isMacOS) return;
     const script = '''
       tell application "Music"
@@ -105,8 +117,13 @@ class SoundService {
     await Process.run('osascript', ['-e', script]);
   }
 
-  /// 恢復背景音樂 (Apple Music & Spotify)
+  /// 恢復背景音樂
+  ///
+  /// notes: Windows 端刻意不做 —— 只暫停不自動恢復，要不要繼續聽由使用者決定。
+  /// （媒體鍵是切換鍵，自動恢復還得記住「是不是自己按的」才不會誤觸發播放，
+  /// 不恢復就連這個狀態都不必存在。）
   Future<void> resumeMusic() async {
+    if (Platform.isWindows) return;
     if (!Platform.isMacOS) return;
     const script = '''
       tell application "Music"

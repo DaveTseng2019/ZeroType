@@ -1,6 +1,8 @@
 #include "channel_handler.h"
 
 #include <windows.h>
+#include <endpointvolume.h>
+#include <mmdeviceapi.h>
 #include <flutter/method_channel.h>
 #include <flutter/standard_method_codec.h>
 #include <flutter/encodable_value.h>
@@ -16,6 +18,57 @@ static std::shared_ptr<flutter::MethodChannel<flutter::EncodableValue>>
     g_overlay_channel;
 static std::shared_ptr<flutter::MethodChannel<flutter::EncodableValue>>
     g_control_channel;
+
+// ── 背景音樂：開始錄音時暫停 ────────────────────────────────────────────
+//
+// 只暫停，不自動恢復（要不要繼續聽由使用者決定）。
+// VK_MEDIA_PLAY_PAUSE 是**切換鍵**，沒在播的時候按下去會反而開始播放，
+// 所以送出前一定要先確認真的有東西在出聲——這個檢查同時也讓「已經暫停了」
+// 的第二次錄音不會誤按，不必自己記狀態。
+
+// 預設輸出裝置現在有沒有聲音。用 peak meter 而不是列舉 audio session ——
+// 一個介面一次呼叫就夠，session 列舉要多繞好幾層。
+//
+// notes: peak 是瞬時值，歌曲間的空檔會讀到 0，那時就不暫停。誤判方向是安全的：
+// 讀不到就維持現狀（音樂繼續放，跟改動前一樣），不會變成誤按而開始播放。
+static bool IsRenderingAudio() {
+  IMMDeviceEnumerator* enumerator = nullptr;
+  // COM 已由 main.cpp 的 CoInitializeEx 初始化
+  if (FAILED(CoCreateInstance(__uuidof(MMDeviceEnumerator), nullptr,
+                              CLSCTX_ALL, IID_PPV_ARGS(&enumerator)))) {
+    return false;
+  }
+  IMMDevice* device = nullptr;
+  bool playing = false;
+  if (SUCCEEDED(enumerator->GetDefaultAudioEndpoint(eRender, eConsole,
+                                                    &device))) {
+    IAudioMeterInformation* meter = nullptr;
+    if (SUCCEEDED(device->Activate(__uuidof(IAudioMeterInformation),
+                                   CLSCTX_ALL, nullptr,
+                                   reinterpret_cast<void**>(&meter)))) {
+      float peak = 0.0f;
+      if (SUCCEEDED(meter->GetPeakValue(&peak))) playing = peak > 0.001f;
+      meter->Release();
+    }
+    device->Release();
+  }
+  enumerator->Release();
+  return playing;
+}
+
+static void SendMediaPlayPause() {
+  INPUT inputs[2] = {};
+  inputs[0].type = INPUT_KEYBOARD;
+  inputs[0].ki.wVk = VK_MEDIA_PLAY_PAUSE;
+  inputs[1] = inputs[0];
+  inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+  SendInput(2, inputs, sizeof(INPUT));
+}
+
+static void PauseMedia() {
+  if (!IsRenderingAudio()) return;
+  SendMediaPlayPause();
+}
 
 // 貼上的目標視窗：按下熱鍵那一刻使用者正在打字的地方。
 //
@@ -106,6 +159,9 @@ void SetupChannels(flutter::BinaryMessenger* messenger) {
           result->Success(nullptr);
         } else if (call.method_name() == "rememberPasteTarget") {
           RememberPasteTarget();
+          result->Success(nullptr);
+        } else if (call.method_name() == "pauseMedia") {
+          PauseMedia();
           result->Success(nullptr);
         } else {
           result->NotImplemented();
