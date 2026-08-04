@@ -128,7 +128,7 @@ flutter run -d windows      # 或重新 build release
 
 ## 📜 版本更新紀錄 (Release Notes)
 
-### [v1.0.11] - 當前版本
+### [v1.0.11]
 - **README 整理** 📝 — 拿掉功能特色段落裡的 macOS 按鍵符號描述（`⌥ Option`、`⌘V` 等）與「macOS 與 Windows 各自音效清單」的說法，這些平台碼已於先前版本移除；開頭標語改為「一個按實際需求產生出來的繁體中文語音輸入工具」。
 
 ### [v1.0.10]
