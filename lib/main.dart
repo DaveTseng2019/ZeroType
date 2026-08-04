@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -40,7 +41,7 @@ void main() async {
 Future<void> _initWindowManager({required bool showWindow}) async {
   await windowManager.ensureInitialized();
   const windowOptions = WindowOptions(
-    size: Size(900, 650),
+    size: Size(1100, 800),
     minimumSize: Size(700, 500),
     center: true,
     backgroundColor: Colors.transparent,
@@ -85,12 +86,16 @@ class ZeroTypeApp extends ConsumerWidget {
       themeMode: themeMode,
       home: const MainShellPage(),
       debugShowCheckedModeBanner: false,
-      builder: (context, child) => _AppInitializer(
-        child: Stack(
-          children: [
-            child ?? const SizedBox.shrink(),
-            const RecordingOverlay(),
-          ],
+      builder: (context, child) => MediaQuery(
+        data: MediaQuery.of(context)
+            .copyWith(textScaler: const TextScaler.linear(1.15)),
+        child: _AppInitializer(
+          child: Stack(
+            children: [
+              child ?? const SizedBox.shrink(),
+              const RecordingOverlay(),
+            ],
+          ),
         ),
       ),
     );
@@ -144,6 +149,28 @@ class _AppInitializerState extends ConsumerState<_AppInitializer>
   @override
   void onWindowClose() async {
     await windowManager.hide();
+  }
+
+  /// 視窗顯示（含被叫出系統匣）時，若上緣跑到所有螢幕範圍之外就置中拉回來——
+  /// 多螢幕、螢幕改解析度或拔掉副螢幕都可能讓上次記住的位置失效。
+  @override
+  void onWindowShow() async {
+    try {
+      final bounds = await windowManager.getBounds();
+      final displays = await screenRetriever.getAllDisplays();
+      final topCenter = Offset(bounds.left + bounds.width / 2, bounds.top);
+      final onScreen = displays.any((d) {
+        final pos = d.visiblePosition ?? Offset.zero;
+        final size = d.visibleSize ?? d.size;
+        return Rect.fromLTWH(pos.dx, pos.dy, size.width, size.height)
+            .contains(topCenter);
+      });
+      if (!onScreen) {
+        await windowManager.center();
+      }
+    } catch (_) {
+      // 抓不到螢幕資訊就算了，不影響正常顯示
+    }
   }
 
   @override

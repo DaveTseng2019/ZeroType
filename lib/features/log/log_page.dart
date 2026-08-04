@@ -28,7 +28,7 @@ class LogPage extends ConsumerWidget {
               const SizedBox(width: 12),
               Text(
                 '${entries.length} 筆，只留在記憶體',
-                style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
+                style: TextStyle(fontSize: 16, color: cs.onSurfaceVariant),
               ),
               const Spacer(),
               TextButton.icon(
@@ -84,7 +84,7 @@ class _LogRow extends StatelessWidget {
           Text(
             stamp,
             style: TextStyle(
-              fontSize: 12,
+              fontSize: 16,
               fontFeatures: const [FontFeature.tabularFigures()],
               color: cs.onSurfaceVariant,
             ),
@@ -100,7 +100,7 @@ class _LogRow extends StatelessWidget {
             child: SelectableText(
               entry.message,
               style: TextStyle(
-                fontSize: 13,
+                fontSize: 17,
                 color: isError ? cs.error : cs.onSurface,
               ),
             ),

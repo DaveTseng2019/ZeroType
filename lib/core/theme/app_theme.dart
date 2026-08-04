@@ -20,7 +20,7 @@ class AppTheme {
 
   static ThemeData _themeData(Brightness brightness) {
     final isDark = brightness == Brightness.dark;
-    
+
     return ThemeData(
       brightness: brightness,
       colorScheme: ColorScheme.fromSeed(
@@ -43,11 +43,11 @@ class AppTheme {
         selectedLabelTextStyle: const TextStyle(
           color: primaryOrange,
           fontWeight: FontWeight.bold,
-          fontSize: 12,
+          fontSize: 14,
         ),
         unselectedLabelTextStyle: TextStyle(
           color: (isDark ? _darkOnSurface : _lightOnSurface).withOpacity(0.5),
-          fontSize: 12,
+          fontSize: 14,
         ),
       ),
       dividerTheme: DividerThemeData(

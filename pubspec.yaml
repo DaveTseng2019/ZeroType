@@ -41,6 +41,9 @@ dependencies:
   # Window management (for overlay window)
   window_manager: ^0.5.1
 
+  # 多螢幕資訊查詢（判斷視窗是否跑出螢幕外）；本來就是 window_manager 的傳遞依賴，改成直接依賴
+  screen_retriever: ^0.2.2
+
   # Local data persistence (non-secure, for settings)
   shared_preferences: ^2.3.5
   package_info_plus: ^9.0.0

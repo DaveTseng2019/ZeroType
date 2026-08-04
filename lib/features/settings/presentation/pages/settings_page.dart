@@ -11,6 +11,7 @@ import 'package:zero_type/core/constants/app_constants.dart';
 import 'package:zero_type/core/di/injection.dart';
 import 'package:zero_type/core/services/app_lifecycle.dart';
 import 'package:zero_type/core/services/sound_service.dart';
+import 'package:zero_type/core/theme/font_sizes.dart';
 import 'package:zero_type/core/theme/theme_controller.dart';
 import 'package:zero_type/core/utils/version_compare.dart';
 import '../controllers/settings_controller.dart';
@@ -85,7 +86,41 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                       ),
                 ),
                 const SizedBox(height: 32),
-                
+
+                // --- Shortcut Section ---
+                _SectionHeader(title: '快捷鍵'),
+                const SizedBox(height: 12),
+                _SettingsCard(
+                  children: [
+                    settings.when(
+                      data: (data) => InkWell(
+                        onTap: () => ref.read(settingsControllerProvider.notifier).startRecordingHotkey(),
+                        borderRadius: BorderRadius.circular(16),
+                        child: _SettingTile(
+                          icon: Icons.keyboard,
+                          title: '全局錄音快捷鍵',
+                          subtitle: '按下此組合鍵即可開始/停止錄音',
+                          trailing: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.primary.withAlpha(20),
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(
+                                color: Theme.of(context).colorScheme.primary.withAlpha(50),
+                              ),
+                            ),
+                            child: _buildHotkeyDisplay(context, data.hotkey),
+                          ),
+                        ),
+                      ),
+                      loading: () => const _LoadingTile(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 32),
+
                 // --- General Settings Section ---
                 _SectionHeader(title: '一般設定'),
                 const SizedBox(height: 12),
@@ -231,9 +266,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                         icon: Icons.hourglass_bottom,
                         title: '等待麥克風就緒',
                         subtitle: '換裝置時會自動帶值：名稱有「耳機」給 1 秒，其他給 0。'
-                            '藍牙開頭是空的（Windows 切換通話模式，實測約 0.93 秒），這段要丟掉。'
-                            '時間到就開始收音，不管當下有沒有聲音——帶降噪的耳機沒人講話時'
-                            '本來就送純靜音，要等到有訊號會變成「等你開口」',
+                            '時間到就開始收音，不管當下有沒有聲音',
                         trailing: SizedBox(
                           width: 200,
                           child: Row(
@@ -321,40 +354,27 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
 
                 const SizedBox(height: 32),
 
-                // --- Shortcut Section ---
-                _SectionHeader(title: '快捷鍵'),
+                // --- Font Size Section ---
+                _SectionHeader(title: '字體'),
                 const SizedBox(height: 12),
                 _SettingsCard(
                   children: [
-                    settings.when(
-                      data: (data) => InkWell(
-                        onTap: () => ref.read(settingsControllerProvider.notifier).startRecordingHotkey(),
-                        borderRadius: BorderRadius.circular(16),
-                        child: _SettingTile(
-                          icon: Icons.keyboard,
-                          title: '全局錄音快捷鍵',
-                          subtitle: '按下此組合鍵即可開始/停止錄音',
-                          trailing: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary.withAlpha(20),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: Theme.of(context).colorScheme.primary.withAlpha(50),
-                              ),
-                            ),
-                            child: _buildHotkeyDisplay(context, data.hotkey),
-                          ),
+                    Builder(
+                      builder: (context) => _SettingTile(
+                        icon: Icons.format_size,
+                        title: '文字大小 (JSON)',
+                        subtitle: '自訂各層級文字大小',
+                        trailing: OutlinedButton(
+                          onPressed: () => _showFontSizeEditor(context),
+                          child: const Text('編輯'),
                         ),
                       ),
-                      loading: () => const _LoadingTile(),
-                      error: (_, __) => const SizedBox.shrink(),
                     ),
                   ],
                 ),
-                
+
                 const SizedBox(height: 32),
-                
+
                 // --- Sound Section ---
                 _SectionHeader(title: '音效'),
                 const SizedBox(height: 12),
@@ -536,6 +556,75 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: widgets,
+    );
+  }
+
+  void _showFontSizeEditor(BuildContext context) {
+    final controller =
+        TextEditingController(text: ref.read(fontSizesProvider).toJson());
+    String? error;
+
+    showDialog(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('文字大小設定'),
+          content: SizedBox(
+            width: 360,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'sectionHeader＝區塊標題，itemTitle＝項目標題，description＝項目說明，'
+                  '單位 px，皆不可小於 ${FontSizes.minSize.toStringAsFixed(0)}。',
+                  style: const TextStyle(fontSize: 14),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: controller,
+                  maxLines: 6,
+                  style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                  decoration: const InputDecoration(border: OutlineInputBorder()),
+                ),
+                if (error != null) ...[
+                  const SizedBox(height: 8),
+                  Text(error!, style: const TextStyle(color: Colors.red, fontSize: 12)),
+                ],
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                ref.read(fontSizesProvider.notifier).resetToDefault();
+                setDialogState(() {
+                  controller.text = FontSizes.defaults.toJson();
+                  error = null;
+                });
+              },
+              child: const Text('還原預設'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                try {
+                  await ref
+                      .read(fontSizesProvider.notifier)
+                      .setFromJson(controller.text);
+                  if (ctx.mounted) Navigator.pop(ctx);
+                } catch (e) {
+                  setDialogState(() => error = 'JSON 格式錯誤：$e');
+                }
+              },
+              child: const Text('儲存'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -763,17 +852,19 @@ class _HotkeyRecorderOverlayState extends State<_HotkeyRecorderOverlay> {
   }
 }
 
-class _SectionHeader extends StatelessWidget {
+class _SectionHeader extends ConsumerWidget {
   final String title;
   const _SectionHeader({required this.title});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final fontSizes = ref.watch(fontSizesProvider);
     return Text(
       title,
       style: Theme.of(context).textTheme.titleSmall?.copyWith(
             color: Theme.of(context).colorScheme.primary,
             fontWeight: FontWeight.bold,
+            fontSize: fontSizes.sectionHeader,
           ),
     );
   }
@@ -861,7 +952,7 @@ class _PermissionTile extends StatelessWidget {
   }
 }
 
-class _SettingTile extends StatelessWidget {
+class _SettingTile extends ConsumerWidget {
   final IconData icon;
   final String title;
   final String subtitle;
@@ -875,7 +966,8 @@ class _SettingTile extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final fontSizes = ref.watch(fontSizesProvider);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
       child: Row(
@@ -887,13 +979,14 @@ class _SettingTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+                Text(title,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: fontSizes.itemTitle)),
                 Text(
                   subtitle,
-                  // 說明文字原本吃 bodySmall(12sp)，太小；寫死尺寸不靠主題級距，
-                  // 12→14 的差距肉眼看不出來
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        fontSize: 15,
+                        fontSize: fontSizes.description,
                         height: 1.4,
                         color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
                       ),

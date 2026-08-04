@@ -28,6 +28,7 @@ class PromptPage extends ConsumerWidget {
               '自訂發送給 AI 的系統提示詞',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: Theme.of(context).colorScheme.onSurface.withAlpha(150),
+                    fontSize: 18,
                   ),
             ),
             const SizedBox(height: 32),

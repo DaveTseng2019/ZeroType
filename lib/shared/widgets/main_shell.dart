@@ -87,7 +87,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
           FilledButton(
             onPressed: () {
               Navigator.pop(ctx);
-              setState(() => _activeIndex = 4); // Settings is now index 4
+              setState(() => _activeIndex = 0); // Settings is now index 0
             },
             child: const Text('前往設定'),
           ),
@@ -152,11 +152,11 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
                   backgroundColor: Theme.of(context).colorScheme.surface,
                   selectedIndex: _activeIndex,
                   onDestinationSelected: (index) {
-                    if (index == 3) {
+                    if (index == 4) {
                       ref.invalidate(historyControllerProvider);
                       ref.invalidate(historyStatsProvider);
                     }
-                    if (index == 4) {
+                    if (index == 0) {
                       // 重新查詢系統權限狀態（原 AutoRouteAware didPush 的職責）
                       ref.invalidate(settingsControllerProvider);
                     }
@@ -168,6 +168,11 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
                     color: Theme.of(context).colorScheme.primary,
                   ),
                   destinations: const [
+                    NavigationRailDestination(
+                      icon: Icon(Icons.settings_outlined),
+                      selectedIcon: Icon(Icons.settings),
+                      label: Text('設定'),
+                    ),
                     NavigationRailDestination(
                       icon: Icon(Icons.tune_outlined),
                       selectedIcon: Icon(Icons.tune),
@@ -189,11 +194,6 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
                       label: Text('歷史'),
                     ),
                     NavigationRailDestination(
-                      icon: Icon(Icons.settings_outlined),
-                      selectedIcon: Icon(Icons.settings),
-                      label: Text('設定'),
-                    ),
-                    NavigationRailDestination(
                       icon: Icon(Icons.receipt_long_outlined),
                       selectedIcon: Icon(Icons.receipt_long),
                       label: Text('紀錄'),
@@ -207,11 +207,11 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
                   child: IndexedStack(
                     index: _activeIndex,
                     children: const [
+                      SettingsPage(),
                       ModelConfigPage(),
                       PromptPage(),
                       DictionaryPage(),
                       HistoryPage(),
-                      SettingsPage(),
                       LogPage(),
                     ],
                   ),

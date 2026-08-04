@@ -81,6 +81,7 @@ class _PageHeader extends StatelessWidget {
                 '查看所有轉寫紀錄與 AI 處理結果',
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                       color: Theme.of(context).colorScheme.onSurface.withAlpha(150),
+                      fontSize: 18,
                     ),
               ),
             ],
@@ -233,7 +234,7 @@ class _HistoryItemState extends ConsumerState<_HistoryItem> {
                   child: Text(
                     record.text,
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: 17,
                       height: 1.7,
                       color: Theme.of(context).colorScheme.onSurface,
                     ),
@@ -302,6 +303,7 @@ class _HistoryItemState extends ConsumerState<_HistoryItem> {
                     _formatDateTime(record.createdAt),
                     style: Theme.of(context).textTheme.bodySmall?.copyWith(
                           color: cs.onSurface.withOpacity(0.45),
+                          fontSize: 16,
                         ),
                   ),
                   const SizedBox(height: 5),
@@ -310,7 +312,7 @@ class _HistoryItemState extends ConsumerState<_HistoryItem> {
                     record.text,
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 14, height: 1.5, fontWeight: FontWeight.w500),
+                    style: const TextStyle(fontSize: 18, height: 1.5, fontWeight: FontWeight.w500),
                   ),
                   if (record.inputTokens != null) ...[
                     const SizedBox(height: 5),
@@ -390,6 +392,7 @@ class _TokenInfoRow extends StatelessWidget {
       parts.join(' · '),
       style: Theme.of(context).textTheme.bodySmall?.copyWith(
             color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+            fontSize: 16,
           ),
     );
   }
@@ -460,6 +463,7 @@ class _EmptyState extends StatelessWidget {
               '完成一次語音辨識後，記錄將會顯示在這裡',
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                     color: Theme.of(context).colorScheme.onSurface.withOpacity(0.25),
+                    fontSize: 16,
                   ),
             ),
           ],
@@ -564,6 +568,7 @@ class _StatCell extends StatelessWidget {
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                 letterSpacing: 0.3,
+                fontSize: 16,
               ),
         ),
         const SizedBox(height: 4),

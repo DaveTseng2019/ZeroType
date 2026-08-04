@@ -90,7 +90,8 @@ class _ConfigSectionState extends State<_ConfigSection> {
                 children: [
                   Text(
                     widget.title,
-                    style: tt.titleMedium?.copyWith(fontWeight: FontWeight.bold),
+                    style: tt.titleMedium
+                        ?.copyWith(fontWeight: FontWeight.bold, fontSize: 22),
                   ),
                   if (widget.isRequired) ...[
                     const SizedBox(width: 4),
@@ -137,7 +138,7 @@ class _SpeechConfigSection extends ConsumerWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('選擇 Provider', style: TextStyle(fontWeight: FontWeight.w600)),
+            const Text('選擇 Provider', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
@@ -172,7 +173,7 @@ class _SpeechConfigSection extends ConsumerWidget {
             const SizedBox(height: 24),
             Row(
               children: [
-                const Text('選擇模型', style: TextStyle(fontWeight: FontWeight.w600)),
+                const Text('選擇模型', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
                 const SizedBox(width: 4),
                 const Text('*', style: TextStyle(color: Colors.redAccent, fontSize: 18, fontWeight: FontWeight.bold)),
                 const SizedBox(width: 8),
@@ -253,7 +254,7 @@ class _ApiKeyInputState extends State<_ApiKeyInput> {
       children: [
         Row(
           children: [
-            const Text('API Key', style: TextStyle(fontWeight: FontWeight.w600)),
+            const Text('API Key', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
             const SizedBox(width: 4),
             const Text('*', style: TextStyle(color: Colors.redAccent, fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(width: 8),
@@ -453,7 +454,7 @@ class _CustomEndpointInputState extends State<_CustomEndpointInput> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('自建模型接口', style: TextStyle(fontWeight: FontWeight.w600)),
+        const Text('自建模型接口', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
         const SizedBox(height: 12),
         Row(
           children: [
@@ -521,7 +522,7 @@ class _AdvancedConfigSection extends StatelessWidget {
       child: ExpansionTile(
         title: const Text(
           '進階設定',
-          style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
         ),
         tilePadding: EdgeInsets.zero,
         expandedAlignment: Alignment.centerLeft,

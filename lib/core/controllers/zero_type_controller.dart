@@ -317,8 +317,8 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
         : null;
 
     try {
-      // notes: 停止音改到貼上完成之後才播（見下方）—— 它真正要通知的是
-      // 「文字已經進到你的欄位」，不是「錄音停了」。中間還有辨識要跑好幾秒，
+      // notes: 停止音改到送出貼上之前才播（見下方）—— 它真正要通知的是
+      // 「文字準備好了」，不是「錄音停了」。中間還有辨識要跑好幾秒，
       // 在這裡響只會讓人以為已經好了。
       final filePath = await _recordingService.stopRecording();
       soundService.resumeMusic();
@@ -348,11 +348,6 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
         await _recordingService.deleteFile(filePath);
         throw Exception('未能辨識出任何文字');
       }
-
-      // notes: 提示音在這裡響，不等貼上完成 —— 逐字稿已經到手，剩下的搬音檔、
-      // 寫歷史、刷新頁面、寫剪貼簿、等 150ms、送 Ctrl+V 加起來約半秒，
-      // 等它們跑完才響會慢半拍。不 await，播放本身也不該卡住流程。
-      unawaited(soundService.playStopSound());
 
       // Move audio to history dir and save record
       final historyRepo = historyRepository;
@@ -386,11 +381,14 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       await Clipboard.setData(ClipboardData(text: result.text));
       await Future.delayed(const Duration(milliseconds: 150));
 
+      // notes: 提示音在送出貼上前響，不 await —— 播放本身不該卡住流程
+      unawaited(soundService.playStopSound());
+
       print('[ZeroType] Simulating paste...');
       const channel = MethodChannel('com.zerotype.app/keyboard');
       await channel.invokeMethod('simulatePaste');
 
-      _log.info('已輸出：${result.text}');
+      _log.info('文字：${result.text}');
       state = const ZeroTypeState();
       await _hideNativeOverlay();
     } catch (e, st) {

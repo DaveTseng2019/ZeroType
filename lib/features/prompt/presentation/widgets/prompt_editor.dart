@@ -84,6 +84,7 @@ class _PromptEditorState extends State<PromptEditor> {
                         widget.title,
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(
                               fontWeight: FontWeight.w600,
+                              fontSize: 22,
                             ),
                       ),
                       const SizedBox(height: 2),
@@ -91,6 +92,7 @@ class _PromptEditorState extends State<PromptEditor> {
                         widget.subtitle,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
                               color: colorScheme.onSurface.withAlpha(120),
+                              fontSize: 16,
                             ),
                       ),
                     ],
@@ -156,6 +158,7 @@ class _PromptEditorState extends State<PromptEditor> {
                         ),
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                               height: 1.6,
+                              fontSize: 18,
                             ),
                       ),
                     ),
