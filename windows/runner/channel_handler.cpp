@@ -7,6 +7,7 @@
 #include <flutter/standard_method_codec.h>
 #include <flutter/encodable_value.h>
 
+#include <atomic>
 #include <memory>
 
 // Keep channels alive for the duration of the app
@@ -142,6 +143,25 @@ static void SimulatePaste() {
   SendInput(4, inputs, sizeof(INPUT));
 }
 
+// ── Esc 取消錄音的低階鍵盤鉤子 ──────────────────────────────────────────
+//
+// 只在錄音時（g_cancel_hotkey_armed）通知 Dart，其餘時間看到 Esc 一樣直接放行，
+// 對其他 app 完全透明。
+static std::atomic<bool> g_cancel_hotkey_armed{false};
+static HHOOK g_keyboard_hook = nullptr;
+
+static LRESULT CALLBACK LowLevelKeyboardProc(int code, WPARAM wparam,
+                                              LPARAM lparam) {
+  if (code == HC_ACTION && wparam == WM_KEYDOWN && g_cancel_hotkey_armed) {
+    auto* info = reinterpret_cast<KBDLLHOOKSTRUCT*>(lparam);
+    if (info->vkCode == VK_ESCAPE && g_control_channel) {
+      g_control_channel->InvokeMethod(
+          "cancel", std::make_unique<flutter::EncodableValue>());
+    }
+  }
+  return ::CallNextHookEx(nullptr, code, wparam, lparam);
+}
+
 void SetupChannels(flutter::BinaryMessenger* messenger) {
   // ── Keyboard channel ────────────────────────────────────────────────────
   // Handles simulatePaste → Win32 SendInput Ctrl+V
@@ -207,10 +227,12 @@ void SetupChannels(flutter::BinaryMessenger* messenger) {
         result->Success(nullptr);
       });
 
-  // ── Control channel (stub) ──────────────────────────────────────────────
-  // On Windows, cancel is triggered directly from the Flutter overlay widget.
-  // The Dart side sets a handler on this channel; the native side is not
-  // expected to invoke it on Windows.
+  // ── Control channel ──────────────────────────────────────────────────────
+  // Dart calls setCancelHotkeyArmed(bool) while recording is active; native
+  // calls back with "cancel" when Esc is pressed while armed. See the
+  // keyboard-hook block below for why this replaced a RegisterHotKey-based
+  // Esc (that approach either had to steal Esc from every other app, or crash
+  // a vendor plugin bug when unregistering).
   g_control_channel =
       std::make_shared<flutter::MethodChannel<flutter::EncodableValue>>(
           messenger, "com.zerotype.app/control",
@@ -220,6 +242,26 @@ void SetupChannels(flutter::BinaryMessenger* messenger) {
       [](const flutter::MethodCall<flutter::EncodableValue>& call,
          std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
              result) {
+        if (call.method_name() == "setCancelHotkeyArmed") {
+          const auto* armed = std::get_if<bool>(call.arguments());
+          g_cancel_hotkey_armed = armed != nullptr && *armed;
+        }
         result->Success(nullptr);
       });
+
+  // ── Esc 取消錄音（不獨佔）───────────────────────────────────────────────
+  //
+  // 錄音當下焦點幾乎都在別的應用程式，之前試過用 hotkey_manager 的
+  // RegisterHotKey 註冊全域 Esc：Windows 會把 Esc 整個從系統攔下只送給
+  // ZeroType，其他 app 收不到那個按鍵；註冊/解除的時機一沒抓準，
+  // 外掛的 Windows 端在 unregister 一個沒登記的 identifier 時還會丟出
+  // 未接的 C++ 例外把整個程式炸掉。
+  //
+  // 低階鍵盤鉤子不會有這兩個問題：CallNextHookEx 永遠放行，其他 app 該收到的
+  // Esc 照樣收得到；鉤子本身在整個程式生命週期只裝一次，「錄音中才生效」純粹
+  // 靠 g_cancel_hotkey_armed 這個旗標開關，沒有 register/unregister 的時序可出錯。
+  if (!g_keyboard_hook) {
+    g_keyboard_hook =
+        ::SetWindowsHookExW(WH_KEYBOARD_LL, LowLevelKeyboardProc, nullptr, 0);
+  }
 }

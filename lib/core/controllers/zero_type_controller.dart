@@ -33,10 +33,14 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
     _recordingService = RecordingService();
     ref.onDispose(() => _recordingService.dispose());
 
-    // Listen for cancel signals from the native overlay (X button or ESC)
+    // 低階鍵盤鉤子偵測到 Esc 時，原生端會呼叫這裡的 'cancel'
+    // （見 windows/runner/channel_handler.cpp 的 LowLevelKeyboardProc）
     const controlChannel = MethodChannel('com.zerotype.app/control');
     controlChannel.setMethodCallHandler((call) async {
-      if (call.method == 'cancel') await cancel();
+      if (call.method == 'cancel') {
+        _log.info('已用 Esc 取消');
+        await cancel();
+      }
     });
 
     return const ZeroTypeState();
@@ -44,9 +48,9 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
 
   // notes: 攔 setter 而不是在各個轉換點呼叫 —— 系統匣圖示在視窗隱藏時是唯一的
   // 錄音提示，掛在 widget 的 listener 要等 frame，隱藏時不保證會跑。
-  // Esc 全域熱鍵的註冊／解除也跟著這裡走同一個理由：cancel() 之外還有好幾條
-  // 「回到 idle」的路徑（權限檢查失敗、逾時、辨識完成），漏掉任何一條解除就會讓
-  // Esc 卡在全域監聽狀態。
+  // Esc 取消熱鍵的「武裝」旗標也跟著這裡走同一個理由：回到 idle 的路徑不只
+  // cancel() 一條（權限檢查失敗、逾時、辨識完成都會），漏掉任何一條會讓
+  // 低階鍵盤鉤子一直保持在監看狀態。
   @override
   set state(ZeroTypeState value) {
     final was = stateOrNull?.status == ZeroTypeStatus.recording;
@@ -56,9 +60,10 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
     super.state = value;
     if (was != now) unawaited(trayService.setRecording(now));
     if (wasActive != nowActive) {
-      unawaited(nowActive
-          ? hotkeyService.registerCancelHotkey(cancel)
-          : hotkeyService.unregisterCancelHotkey());
+      const controlChannel = MethodChannel('com.zerotype.app/control');
+      unawaited(controlChannel
+          .invokeMethod<void>('setCancelHotkeyArmed', nowActive)
+          .catchError((_) {}));
     }
   }
 
