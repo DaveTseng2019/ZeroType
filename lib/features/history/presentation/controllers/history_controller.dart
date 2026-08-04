@@ -92,18 +92,16 @@ class HistoryController extends AsyncNotifier<List<TranscriptionRecord>> {
     }
   }
 
-  Future<void> revealInFinder(String audioPath) async {
+  Future<void> openContainingFolder(String audioPath) async {
     try {
+      final dir = File(audioPath).parent.path;
       if (Platform.isMacOS) {
-        await Process.run('open', ['-R', audioPath]);
+        await Process.run('open', [dir]);
       } else if (Platform.isWindows) {
-        await Process.run(
-          'explorer.exe',
-          ['/select,', audioPath.replaceAll('/', '\\')],
-        );
+        await Process.run('explorer.exe', [dir]);
       }
     } catch (e) {
-      print('[HistoryController] revealInFinder error: $e');
+      print('[HistoryController] openContainingFolder error: $e');
     }
   }
 
@@ -122,5 +120,6 @@ class HistoryController extends AsyncNotifier<List<TranscriptionRecord>> {
     _stopPlayback();
     await historyRepository.clearAll();
     ref.invalidateSelf();
+    ref.invalidate(historyStatsProvider);
   }
 }

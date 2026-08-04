@@ -5,6 +5,7 @@ import 'package:window_manager/window_manager.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zero_type/core/controllers/zero_type_controller.dart';
 import 'package:zero_type/core/di/injection.dart';
+import 'package:zero_type/core/services/app_lifecycle.dart';
 import 'package:zero_type/core/state/zero_type_state.dart';
 import 'package:zero_type/features/dictionary/presentation/pages/dictionary_page.dart';
 import 'package:zero_type/features/history/presentation/controllers/history_controller.dart';
@@ -107,6 +108,30 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
     );
   }
 
+  void _confirmQuit(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('結束 ZeroType'),
+        content: const Text('確定要結束 ZeroType 嗎？結束後全域熱鍵將無法使用。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: quitApp,
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+              foregroundColor: Theme.of(ctx).colorScheme.onError,
+            ),
+            child: const Text('結束'),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMain() {
     if (_needsPermissionPrompt && !_dialogShown) {
       _dialogShown = true;
@@ -164,6 +189,22 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
                   },
                   labelType: NavigationRailLabelType.all,
                   leading: const SizedBox(height: 16),
+                  trailing: Expanded(
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: Padding(
+                        padding: const EdgeInsets.only(bottom: 16),
+                        child: Tooltip(
+                          message: '結束 ZeroType',
+                          child: IconButton(
+                            onPressed: () => _confirmQuit(context),
+                            icon: const Icon(Icons.power_settings_new),
+                            color: Theme.of(context).colorScheme.error,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                   selectedIconTheme: IconThemeData(
                     color: Theme.of(context).colorScheme.primary,
                   ),

@@ -90,8 +90,8 @@ class _PageHeader extends StatelessWidget {
         if (records.isNotEmpty)
           TextButton.icon(
             onPressed: () => _confirmClearAll(context, ref),
-            icon: const Icon(Icons.delete_sweep_outlined, size: 16),
-            label: const Text('全部清除'),
+            icon: const Icon(Icons.delete_sweep_outlined, size: 20),
+            label: const Text('全部清除', style: TextStyle(fontSize: 16)),
             style: TextButton.styleFrom(
               foregroundColor: Colors.red.withOpacity(0.8),
               visualDensity: VisualDensity.compact,
@@ -343,9 +343,10 @@ class _HistoryItemState extends ConsumerState<_HistoryItem> {
               if (hasAudio)
                 _ActionIcon(
                   icon: Icons.folder_open_outlined,
-                  tooltip: Platform.isMacOS ? '在 Finder 中顯示' : '在檔案總管中顯示',
-                  onTap: () =>
-                      ref.read(historyControllerProvider.notifier).revealInFinder(record.audioPath!),
+                  tooltip: '開啟所在目錄',
+                  onTap: () => ref
+                      .read(historyControllerProvider.notifier)
+                      .openContainingFolder(record.audioPath!),
                 ),
               _ActionIcon(
                 icon: Icons.delete_outline,

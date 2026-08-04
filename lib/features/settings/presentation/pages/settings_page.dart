@@ -9,7 +9,6 @@ import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:zero_type/core/constants/app_constants.dart';
 import 'package:zero_type/core/di/injection.dart';
-import 'package:zero_type/core/services/app_lifecycle.dart';
 import 'package:zero_type/core/services/sound_service.dart';
 import 'package:zero_type/core/theme/font_sizes.dart';
 import 'package:zero_type/core/theme/theme_controller.dart';
@@ -487,19 +486,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                   ],
                 ),
 
-                const SizedBox(height: 24),
-
-                // --- Quit ---
-                Center(
-                  child: TextButton.icon(
-                    onPressed: quitApp,
-                    icon: const Icon(Icons.power_settings_new, size: 18),
-                    label: const Text('結束 ZeroType'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: Theme.of(context).colorScheme.error,
-                    ),
-                  ),
-                ),
               ],
             ),
           ),
@@ -531,7 +517,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
         if (mod == HotKeyModifier.control) label = '⌃ Control';
         
         if (label.isNotEmpty) {
-          if (widgets.isNotEmpty) widgets.add(const Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: Text('+')));
+          if (widgets.isNotEmpty) widgets.add(const Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: Text('+', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))));
           widgets.add(_KeyBadge(label: label));
         }
       }
@@ -539,18 +525,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
 
     String keyLabel = 'Key';
     if (hotkey.key is PhysicalKeyboardKey) {
-      final physKey = hotkey.key as PhysicalKeyboardKey;
-      keyLabel = physKey.debugName ?? 'Key';
-      if (keyLabel.startsWith('Key ')) keyLabel = keyLabel.substring(4);
+      keyLabel = physicalKeyLabel(hotkey.key as PhysicalKeyboardKey);
     } else if (hotkey.key is LogicalKeyboardKey) {
       keyLabel = (hotkey.key as LogicalKeyboardKey).keyLabel;
     }
 
-    if (hotkey.key == PhysicalKeyboardKey.space || hotkey.key == LogicalKeyboardKey.space) {
-      keyLabel = 'Space';
-    }
-    
-    if (widgets.isNotEmpty) widgets.add(const Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: Text('+')));
+    if (widgets.isNotEmpty) widgets.add(const Padding(padding: EdgeInsets.symmetric(horizontal: 4), child: Text('+', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))));
     widgets.add(_KeyBadge(label: keyLabel.toUpperCase()));
 
     return Row(
@@ -628,6 +608,43 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
     );
   }
 
+}
+
+/// [PhysicalKeyboardKey.debugName] 在 release build 一律回 null（見
+/// keyboard_key.g.dart 的 assert 包裝，release 會被 strip 掉）——
+/// 熱鍵畫面之前一直靠這個顯示按鍵，release 版因此永遠只顯示「Key」。
+/// 改用 usbHidUsage 自己對應，只涵蓋熱鍵合理會選到的範圍，其餘退回 16 進位代碼。
+String physicalKeyLabel(PhysicalKeyboardKey key) {
+  final usage = key.usbHidUsage & 0xFFFF;
+  if (usage >= 0x04 && usage <= 0x1D) {
+    return String.fromCharCode('A'.codeUnitAt(0) + (usage - 0x04));
+  }
+  if (usage >= 0x1E && usage <= 0x26) {
+    return String.fromCharCode('1'.codeUnitAt(0) + (usage - 0x1E));
+  }
+  if (usage >= 0x3A && usage <= 0x45) {
+    return 'F${usage - 0x39}';
+  }
+  const special = {
+    0x27: '0',
+    0x28: 'Enter',
+    0x29: 'Esc',
+    0x2A: 'Backspace',
+    0x2B: 'Tab',
+    0x2C: 'Space',
+    0x2D: '-',
+    0x2E: '=',
+    0x2F: '[',
+    0x30: ']',
+    0x31: '\\',
+    0x33: ';',
+    0x34: "'",
+    0x35: '`',
+    0x36: ',',
+    0x37: '.',
+    0x38: '/',
+  };
+  return special[usage] ?? 'Key 0x${usage.toRadixString(16)}';
 }
 
 class _HotkeyRecorderOverlay extends StatefulWidget {
@@ -1045,15 +1062,15 @@ class _KeyBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
       decoration: BoxDecoration(
         color: cs.primary.withAlpha(30),
-        borderRadius: BorderRadius.circular(4),
+        borderRadius: BorderRadius.circular(6),
       ),
       child: Text(
         label,
         style: TextStyle(
-          fontSize: 12,
+          fontSize: 16,
           fontWeight: FontWeight.bold,
           color: cs.primary,
         ),
