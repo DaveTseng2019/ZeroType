@@ -331,7 +331,8 @@ class _HistoryItemState extends ConsumerState<_HistoryItem> {
                 _ActionIcon(
                   icon: isPlaying ? Icons.stop_rounded : Icons.play_arrow_rounded,
                   tooltip: isPlaying ? '停止' : '播放',
-                  color: isPlaying ? cs.primary : null,
+                  color: cs.primary,
+                  filled: true,
                   onTap: () => ref.read(historyControllerProvider.notifier).togglePlay(record),
                 ),
               _ActionIcon(
@@ -404,27 +405,33 @@ class _ActionIcon extends StatelessWidget {
     required this.tooltip,
     required this.onTap,
     this.color,
+    this.filled = false,
   });
 
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
   final Color? color;
+  /// 播放鍵用：帶底色的圓形，讓它在一排動作圖示裡先被看到。
+  final bool filled;
 
   @override
   Widget build(BuildContext context) {
+    final iconColor = color ?? Theme.of(context).colorScheme.onSurface.withOpacity(0.55);
     return Tooltip(
       message: tooltip,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(6),
-        child: Padding(
-          padding: const EdgeInsets.all(6),
-          child: Icon(
-            icon,
-            size: 17,
-            color: color ?? Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
-          ),
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          padding: const EdgeInsets.all(8),
+          decoration: filled
+              ? BoxDecoration(
+                  color: iconColor.withOpacity(0.12),
+                  shape: BoxShape.circle,
+                )
+              : null,
+          child: Icon(icon, size: 20, color: iconColor),
         ),
       ),
     );

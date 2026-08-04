@@ -95,8 +95,14 @@ void main() {
         hasAnySound(pcmFrames([...List.filled(49, 0), 500])),
         isTrue,
       );
-      // 底噪等級（內建麥克風實測 5~9）也算有聲音
-      expect(hasAnySound(pcmFrames(List.filled(10, 6))), isTrue);
+      // 高於 kDeadChunkRms(100) 才算有聲音
+      expect(hasAnySound(pcmFrames(List.filled(10, 120))), isTrue);
+    });
+
+    test('低於 kDeadChunkRms(100) 的音框不算有聲音', () {
+      // 2026-08-04 實測：幻覺案例(avg 204/max 3485)跟辨識正確案例(avg 176/max 1872)
+      // 幾乎同量級，這個門檻攔不住那組真實案例，只是使用者要求的保守值。
+      expect(hasAnySound(pcmFrames(List.filled(10, 90))), isFalse);
     });
   });
 
