@@ -17,6 +17,7 @@ class AppConstants {
   static const String soundEnabledKey = 'sound_enabled';
   static const String startSoundKey = 'start_sound';
   static const String stopSoundKey = 'stop_sound';
+  static const String recordingStoppedSoundKey = 'recording_stopped_sound';
   static const String historyRetentionDaysKey = 'history_retention_days';
   static const String maxRecordingMinutesKey = 'max_recording_minutes';
   static const String inputDeviceIdKey = 'input_device_id';

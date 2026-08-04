@@ -1,10 +1,55 @@
 import 'dart:ffi';
 import 'dart:io';
+import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zero_type/core/constants/app_constants.dart';
+
+/// 音效播完至少要有這麼長，太短的系統音效（例如 Speech On.wav 只有一百多毫秒）
+/// 聽起來像沒放到，用重播頂到這個長度。
+const Duration kMinSoundDuration = Duration(milliseconds: 900);
+
+/// 從 WAV 檔案內容算出播放時長。走訪 chunk 找 'fmt ' 和 'data'，不能假設
+/// 固定 offset —— 有些系統音效檔在中間插了額外 chunk（如 LIST）。
+/// 解析失敗（非 WAV、檔案損毀）回 null。
+Duration? wavDuration(Uint8List bytes) {
+  if (bytes.length < 12) return null;
+  final bd = ByteData.sublistView(bytes);
+  if (bd.getUint32(0, Endian.big) != 0x52494646 /* RIFF */ ||
+      bd.getUint32(8, Endian.big) != 0x57415645 /* WAVE */) {
+    return null;
+  }
+
+  var offset = 12;
+  int? byteRate;
+  int? dataSize;
+  while (offset + 8 <= bytes.length) {
+    final id = bd.getUint32(offset, Endian.big);
+    final size = bd.getUint32(offset + 4, Endian.little);
+    if (id == 0x666d7420 /* fmt  */ && offset + 20 <= bytes.length) {
+      byteRate = bd.getUint32(offset + 16, Endian.little);
+    } else if (id == 0x64617461 /* data */) {
+      dataSize = size;
+    }
+    offset += 8 + size + (size.isOdd ? 1 : 0);
+    if (byteRate != null && dataSize != null) break;
+  }
+  if (byteRate == null || byteRate == 0 || dataSize == null) return null;
+  return Duration(milliseconds: (dataSize * 1000 / byteRate).round());
+}
+
+/// 音效實際長度不到 [minDuration] 就重播頂到夠長；長度未知（解析失敗）就當作
+/// 已經夠長，只播一次 —— 猜錯的下限是「不重複」，不是「連環重播」。
+/// 上限 5 次防止極短音檔（例如壞掉、只有幾個取樣）被無意義地連放一大串。
+int repeatCountFor(Duration? actual, {Duration minDuration = kMinSoundDuration}) {
+  if (actual == null || actual <= Duration.zero || actual >= minDuration) {
+    return 1;
+  }
+  return min(5, (minDuration.inMicroseconds / actual.inMicroseconds).ceil());
+}
 
 /// 系統音效清單（路徑 → 顯示名稱），依平台切換
 final Map<String, String> kSystemSoundLabels =
@@ -32,12 +77,15 @@ const Map<String, String> kMacSoundLabels = {
 const String kDefaultStartSound = '/System/Library/Sounds/Ping.aiff';
 const String kDefaultStopSound = '/System/Library/Sounds/Submarine.aiff';
 const String kDefaultCancelSound = '/System/Library/Sounds/Basso.aiff';
+/// 麥克風真正關閉那一刻播的音效（跟 [kDefaultStopSound] 不同 —— 那個是「文字準備好了」）。
+const String kDefaultRecordingStoppedSound = '/System/Library/Sounds/Tink.aiff';
 
 /// Windows 內建語音提示音（對應 macOS 預設音效）
 const Map<String, String> kWindowsSounds = {
   kDefaultStartSound: r'C:\Windows\Media\Speech On.wav',
   kDefaultStopSound: r'C:\Windows\Media\Speech Off.wav',
   kDefaultCancelSound: r'C:\Windows\Media\Speech Misrecognition.wav',
+  kDefaultRecordingStoppedSound: r'C:\Windows\Media\Windows Notify.wav',
 };
 
 const Map<String, String> kWindowsSoundLabels = {
@@ -71,6 +119,10 @@ class SoundService {
   String get stopSoundPath =>
       _prefs.getString(AppConstants.stopSoundKey) ?? kDefaultStopSound;
 
+  String get recordingStoppedSoundPath =>
+      _prefs.getString(AppConstants.recordingStoppedSoundKey) ??
+      kDefaultRecordingStoppedSound;
+
   Future<void> playStartSound() async {
     if (!soundEnabled) return;
     // _playWindows 會把殘留的 macOS 路徑對應成內建提示音
@@ -85,6 +137,12 @@ class SoundService {
   Future<void> playCancelSound() async {
     if (!soundEnabled) return;
     await _play(kDefaultCancelSound);
+  }
+
+  /// 錄音真正停止（麥克風關閉）那一刻播，跟「文字準備好了」的 [playStopSound] 分開。
+  Future<void> playRecordingStoppedSound() async {
+    if (!soundEnabled) return;
+    await _play(recordingStoppedSoundPath);
   }
 
   /// 播放任意路徑的音效（供設定頁預覽使用）
@@ -138,7 +196,7 @@ class SoundService {
 
   static Future<void> _play(String path) async {
     if (Platform.isWindows) {
-      _playWindows(path);
+      await _playWindowsRepeated(path);
       return;
     }
     if (!Platform.isMacOS) return;
@@ -146,6 +204,27 @@ class SoundService {
       await Process.run('afplay', [path]);
     } catch (_) {
       // 忽略音效錯誤
+    }
+  }
+
+  /// 音效檔太短就重播頂到 [kMinSoundDuration]，見 [repeatCountFor]。
+  static Future<void> _playWindowsRepeated(String path) async {
+    final wavPath =
+        path.toLowerCase().endsWith('.wav') ? path : kWindowsSounds[path];
+    if (wavPath == null || !File(wavPath).existsSync()) {
+      print('[SoundService] no Windows sound for: $path');
+      return;
+    }
+    Duration? duration;
+    try {
+      duration = wavDuration(File(wavPath).readAsBytesSync());
+    } catch (_) {
+      duration = null;
+    }
+    final repeats = repeatCountFor(duration);
+    for (var i = 0; i < repeats; i++) {
+      _playWindows(wavPath);
+      if (i < repeats - 1) await Future.delayed(duration!);
     }
   }
 

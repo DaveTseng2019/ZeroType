@@ -375,7 +375,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                 const SizedBox(height: 32),
 
                 // --- Sound Section ---
-                _SectionHeader(title: '音效'),
+                _SectionHeader(title: '音效', subtitle: '開始、結束、完成三個階段的提示音'),
                 const SizedBox(height: 12),
                 _SettingsCard(
                   children: [
@@ -413,8 +413,23 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                     settings.when(
                       data: (data) => _SoundPickerTile(
                         icon: Icons.stop_circle_outlined,
-                        title: '停止錄音音效',
-                        subtitle: '再次按下快捷鍵停止錄音時播放',
+                        title: '錄音結束音效',
+                        subtitle: '再次按下快捷鍵、麥克風真正關閉時播放',
+                        selectedPath: data.recordingStoppedSound,
+                        enabled: data.soundEnabled,
+                        onChanged: (path) => ref
+                            .read(settingsControllerProvider.notifier)
+                            .setRecordingStoppedSound(path),
+                      ),
+                      loading: () => const _LoadingTile(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    settings.when(
+                      data: (data) => _SoundPickerTile(
+                        icon: Icons.task_alt,
+                        title: '辨識完成音效',
+                        subtitle: '文字辨識完成、貼上前播放',
                         selectedPath: data.stopSound,
                         enabled: data.soundEnabled,
                         onChanged: (path) => ref
@@ -871,18 +886,38 @@ class _HotkeyRecorderOverlayState extends State<_HotkeyRecorderOverlay> {
 
 class _SectionHeader extends ConsumerWidget {
   final String title;
-  const _SectionHeader({required this.title});
+  final String? subtitle;
+  const _SectionHeader({required this.title, this.subtitle});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final fontSizes = ref.watch(fontSizesProvider);
-    return Text(
+    final titleText = Text(
       title,
       style: Theme.of(context).textTheme.titleSmall?.copyWith(
             color: Theme.of(context).colorScheme.primary,
             fontWeight: FontWeight.bold,
             fontSize: fontSizes.sectionHeader,
           ),
+    );
+    if (subtitle == null) return titleText;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.baseline,
+      textBaseline: TextBaseline.alphabetic,
+      children: [
+        titleText,
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            subtitle!,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                  fontSize: fontSizes.description,
+                ),
+          ),
+        ),
+      ],
     );
   }
 }

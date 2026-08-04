@@ -284,6 +284,40 @@ Uint8List applyNoiseGate(
   return samples.buffer.asUint8List();
 }
 
+/// 自動增益：把整段錄音的峰值拉到接近滿刻度。藍牙耳機（尤其 HFP）麥克風輸出
+/// 普遍偏小聲，固定的辨識模型輸入音量門檻因此常常吃不到訊號。
+///
+/// 只放大不衰減 —— 峰值已經夠大聲的錄音（gain ≤ 1）不處理。[maxGain] 頂住
+/// 增益上限，避免安靜片段的底噪被一起放大到爆音。
+Uint8List applyGain(
+  Uint8List pcm, {
+  double targetPeak = 0.85,
+  double maxGain = 8.0,
+}) {
+  final totalSamples = pcm.lengthInBytes ~/ 2;
+  if (totalSamples == 0) return pcm;
+
+  final aligned = pcm.offsetInBytes.isEven ? pcm : Uint8List.fromList(pcm);
+  final samples = Int16List.fromList(
+    Int16List.view(aligned.buffer, aligned.offsetInBytes, totalSamples),
+  );
+
+  var peak = 0;
+  for (final s in samples) {
+    final abs = s.abs();
+    if (abs > peak) peak = abs;
+  }
+  if (peak == 0) return pcm;
+
+  final gain = min(targetPeak * 32767 / peak, maxGain);
+  if (gain <= 1.0) return pcm;
+
+  for (var i = 0; i < totalSamples; i++) {
+    samples[i] = (samples[i] * gain).round().clamp(-32768, 32767);
+  }
+  return samples.buffer.asUint8List();
+}
+
 class RecordingService {
   RecordingService() : _recorder = AudioRecorder();
 
@@ -456,7 +490,8 @@ class RecordingService {
       return null;
     }
 
-    await File(_currentFilePath!).writeAsBytes(buildWav(processed));
+    final boosted = applyGain(processed);
+    await File(_currentFilePath!).writeAsBytes(buildWav(boosted));
     print(
       '[RecordingService] wrote ${pcm.length} bytes PCM → $_currentFilePath',
     );

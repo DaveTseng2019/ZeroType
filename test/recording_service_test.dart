@@ -245,4 +245,40 @@ void main() {
       expect(applyNoiseGate(Uint8List(0)).length, 0);
     });
   });
+
+  group('applyGain', () {
+    // 藍牙耳機麥克風偏小聲的情境：峰值 4000 該被拉到目標峰值附近
+    test('小聲的錄音被放大到接近目標峰值', () {
+      final pcm = pcmFrames([4000, 4000]);
+      final boosted = applyGain(pcm, targetPeak: 0.85);
+      expect(frameRms(boosted, 0), closeTo(0.85 * 32767, 50));
+    });
+
+    // 增益上限存在就是為了不讓底噪跟著炸開；沒頂住這條斷言會先炸
+    test('增益頂到 maxGain 就不再往上加', () {
+      final pcm = pcmFrames([100, 100]); // 理論增益遠超過 maxGain
+      final boosted = applyGain(pcm, targetPeak: 0.85, maxGain: 8.0);
+      expect(frameRms(boosted, 0), closeTo(800, 5)); // 100 × 8.0
+    });
+
+    test('已經夠大聲就不處理，原樣回傳', () {
+      final pcm = pcmFrames([30000, 30000]);
+      expect(applyGain(pcm), same(pcm));
+    });
+
+    test('純數位靜音（peak=0）原樣回傳，不除以零', () {
+      final pcm = Uint8List(200);
+      expect(applyGain(pcm), same(pcm));
+    });
+
+    test('放大後仍落在 int16 範圍內，不會溢位', () {
+      final pcm = pcmFrames([5000]);
+      final boosted = applyGain(pcm, targetPeak: 2.0); // 刻意要求超過滿刻度
+      final samples = Int16List.view(boosted.buffer, boosted.offsetInBytes,
+          boosted.lengthInBytes ~/ 2);
+      for (final s in samples) {
+        expect(s, inInclusiveRange(-32768, 32767));
+      }
+    });
+  });
 }

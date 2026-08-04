@@ -36,6 +36,9 @@ class SettingsController extends AsyncNotifier<SettingsState> {
       final soundEnabled = prefs.getBool(AppConstants.soundEnabledKey) ?? true;
       final startSound = prefs.getString(AppConstants.startSoundKey) ?? kDefaultStartSound;
       final stopSound = prefs.getString(AppConstants.stopSoundKey) ?? kDefaultStopSound;
+      final recordingStoppedSound =
+          prefs.getString(AppConstants.recordingStoppedSoundKey) ??
+              kDefaultRecordingStoppedSound;
       final historyRetentionDays = prefs.getInt(AppConstants.historyRetentionDaysKey) ?? 7;
       final maxRecordingMinutes = prefs.getInt(AppConstants.maxRecordingMinutesKey) ?? 1;
       final inputDeviceId = prefs.getString(AppConstants.inputDeviceIdKey) ?? '';
@@ -54,6 +57,7 @@ class SettingsController extends AsyncNotifier<SettingsState> {
         soundEnabled: soundEnabled,
         startSound: startSound,
         stopSound: stopSound,
+        recordingStoppedSound: recordingStoppedSound,
         historyRetentionDays: historyRetentionDays,
         maxRecordingMinutes: maxRecordingMinutes,
         inputDeviceId: inputDeviceId,
@@ -190,6 +194,14 @@ class SettingsController extends AsyncNotifier<SettingsState> {
     final currentState = state.value;
     if (currentState != null) {
       state = AsyncData(currentState.copyWith(stopSound: path));
+    }
+  }
+
+  Future<void> setRecordingStoppedSound(String path) async {
+    await appPrefs.setString(AppConstants.recordingStoppedSoundKey, path);
+    final currentState = state.value;
+    if (currentState != null) {
+      state = AsyncData(currentState.copyWith(recordingStoppedSound: path));
     }
   }
 

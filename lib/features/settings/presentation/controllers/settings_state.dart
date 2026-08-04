@@ -16,6 +16,7 @@ class SettingsState {
     this.soundEnabled = true,
     this.startSound = kDefaultStartSound,
     this.stopSound = kDefaultStopSound,
+    this.recordingStoppedSound = kDefaultRecordingStoppedSound,
     this.historyRetentionDays = 7,
     this.maxRecordingMinutes = 1,
     this.inputDeviceId = '',
@@ -35,6 +36,7 @@ class SettingsState {
   final bool soundEnabled;
   final String startSound;
   final String stopSound;
+  final String recordingStoppedSound;
   final int historyRetentionDays;
   final int maxRecordingMinutes;
 
@@ -65,6 +67,7 @@ class SettingsState {
     bool? soundEnabled,
     String? startSound,
     String? stopSound,
+    String? recordingStoppedSound,
     int? historyRetentionDays,
     int? maxRecordingMinutes,
     String? inputDeviceId,
@@ -86,6 +89,7 @@ class SettingsState {
       soundEnabled: soundEnabled ?? this.soundEnabled,
       startSound: startSound ?? this.startSound,
       stopSound: stopSound ?? this.stopSound,
+      recordingStoppedSound: recordingStoppedSound ?? this.recordingStoppedSound,
       historyRetentionDays: historyRetentionDays ?? this.historyRetentionDays,
       maxRecordingMinutes: maxRecordingMinutes ?? this.maxRecordingMinutes,
       inputDeviceId: inputDeviceId ?? this.inputDeviceId,

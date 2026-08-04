@@ -67,6 +67,10 @@
         {
           "id": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
           "name": "Nemotron 3 Nano Omni（免費）"
+        },
+        {
+          "id": "xiaomi/mimo-v2.5",
+          "name": "小米 MiMo-V2.5"
         }
       ]
     }

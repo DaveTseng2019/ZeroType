@@ -14,6 +14,7 @@ const Map<String, ({double inputPerM, double outputPerM})> kModelPricing = {
   'openai/gpt-audio': (inputPerM: 32.0, outputPerM: 10.0),
   'openai/gpt-audio-mini': (inputPerM: 0.6, outputPerM: 2.4),
   'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free': (inputPerM: 0, outputPerM: 0),
+  'xiaomi/mimo-v2.5': (inputPerM: 0.14, outputPerM: 0.28),
 };
 
 const Map<String, String> kProviderNames = {
@@ -37,6 +38,7 @@ const Map<String, String> kModelNames = {
   'openai/gpt-audio': 'GPT Audio',
   'openai/gpt-audio-mini': 'GPT Audio Mini',
   'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free': 'Nemotron 3 Nano Omni',
+  'xiaomi/mimo-v2.5': '小米 MiMo-V2.5',
 };
 
 double? calculateCost(String modelId, int? inputTokens, int? outputTokens) {

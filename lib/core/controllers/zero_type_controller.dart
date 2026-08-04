@@ -317,10 +317,10 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
         : null;
 
     try {
-      // notes: 停止音改到送出貼上之前才播（見下方）—— 它真正要通知的是
-      // 「文字準備好了」，不是「錄音停了」。中間還有辨識要跑好幾秒，
-      // 在這裡響只會讓人以為已經好了。
+      // notes: 這裡播的是「麥克風真的關了」，跟下面送出貼上前那聲「文字準備好了」
+      // 是兩個不同的提示音——中間還有辨識要跑好幾秒，用同一聲會讓人誤以為已經好了。
       final filePath = await _recordingService.stopRecording();
+      unawaited(soundService.playRecordingStoppedSound());
       soundService.resumeMusic();
 
       if (!ref.mounted || _cancelled) {
