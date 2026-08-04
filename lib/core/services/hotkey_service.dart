@@ -43,9 +43,9 @@ class HotkeyService {
       }
     }
     
-    // Default: Alt + Space
+    // Default: Alt + Z
     _currentHotkey = HotKey(
-      key: PhysicalKeyboardKey.space,
+      key: PhysicalKeyboardKey.keyZ,
       modifiers: [HotKeyModifier.alt],
       scope: HotKeyScope.system,
     );
