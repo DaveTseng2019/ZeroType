@@ -116,6 +116,30 @@ class HotkeyService {
     _isPaused = false;
   }
 
+  /// notes: Esc 取消錄音是全域熱鍵，不是 Flutter widget 的 key handler ——
+  /// 錄音當下焦點幾乎都在別的應用程式（使用者正在對著它講話），
+  /// 只有 HardwareKeyboard 監聽的 widget 版本收不到那個 Esc。
+  static final _cancelHotkey =
+      HotKey(key: PhysicalKeyboardKey.escape, scope: HotKeyScope.system);
+  bool _cancelHotkeyRegistered = false;
+
+  /// 呼叫端保證只在「進入錄音」到「離開錄音」這段期間各呼叫一次，
+  /// 這裡再擋一次是避免重複註冊讓 win32 RegisterHotKey 出錯或留下殘影。
+  Future<void> registerCancelHotkey(HotkeyCallback callback) async {
+    if (_cancelHotkeyRegistered) return;
+    _cancelHotkeyRegistered = true;
+    await hotKeyManager.register(
+      _cancelHotkey,
+      keyDownHandler: (_) => callback(),
+    );
+  }
+
+  Future<void> unregisterCancelHotkey() async {
+    if (!_cancelHotkeyRegistered) return;
+    _cancelHotkeyRegistered = false;
+    await hotKeyManager.unregister(_cancelHotkey);
+  }
+
   Future<void> dispose() async {
     await hotKeyManager.unregisterAll();
   }

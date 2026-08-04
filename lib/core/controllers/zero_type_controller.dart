@@ -43,13 +43,23 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
   }
 
   // notes: 攔 setter 而不是在各個轉換點呼叫 —— 系統匣圖示在視窗隱藏時是唯一的
-  // 錄音提示，掛在 widget 的 listener 要等 frame，隱藏時不保證會跑
+  // 錄音提示，掛在 widget 的 listener 要等 frame，隱藏時不保證會跑。
+  // Esc 全域熱鍵的註冊／解除也跟著這裡走同一個理由：cancel() 之外還有好幾條
+  // 「回到 idle」的路徑（權限檢查失敗、逾時、辨識完成），漏掉任何一條解除就會讓
+  // Esc 卡在全域監聽狀態。
   @override
   set state(ZeroTypeState value) {
     final was = stateOrNull?.status == ZeroTypeStatus.recording;
     final now = value.status == ZeroTypeStatus.recording;
+    final wasActive = stateOrNull?.isActive ?? false;
+    final nowActive = value.isActive;
     super.state = value;
     if (was != now) unawaited(trayService.setRecording(now));
+    if (wasActive != nowActive) {
+      unawaited(nowActive
+          ? hotkeyService.registerCancelHotkey(cancel)
+          : hotkeyService.unregisterCancelHotkey());
+    }
   }
 
   Future<void> toggleRecording() async {
