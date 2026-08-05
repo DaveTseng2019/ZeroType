@@ -201,8 +201,10 @@ class SpeechRecognitionService {
       throw Exception('找不到音檔：$audioFilePath');
     }
 
-    // OpenRouter 沒有 /audio/transcriptions 端點，
-    // 音訊要以 base64 走 chat/completions 的 input_audio。
+    // 音訊以 base64 走 chat/completions 的 input_audio。
+    // notes: OpenRouter 另有 /audio/transcriptions（whisper、qwen3-asr 等 13 個純 ASR 模型），
+    // 便宜很多但 input_modalities 只有 audio——收不了人設卡與語言指令，也沒有 chat 模型
+    // 的上下文推斷。這裡刻意不用；成本大頭在第二段的規則 prompt，換掉音訊段省不到。
     final ext = audioFilePath.split('.').last.toLowerCase();
     final format = const {'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac'}
             .contains(ext)

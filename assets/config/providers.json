@@ -29,8 +29,16 @@
       "name": "OpenRouter",
       "models": [
         {
+          "id": "google/gemini-3.6-flash",
+          "name": "Gemini 3.6 Flash"
+        },
+        {
           "id": "google/gemini-3.5-flash",
           "name": "Gemini 3.5 Flash"
+        },
+        {
+          "id": "google/gemini-3.5-flash-lite",
+          "name": "Gemini 3.5 Flash Lite"
         },
         {
           "id": "google/gemini-3-flash-preview",

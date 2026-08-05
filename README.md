@@ -128,6 +128,10 @@ flutter run -d windows      # 或重新 build release
 
 ## 📜 版本更新紀錄 (Release Notes)
 
+### [v1.0.12]
+- **語音辨識新增 Gemini 3.6 Flash 與 Gemini 3.5 Flash Lite** 🆕 — OpenRouter 上兩個較新的音訊輸入模型，音訊計費分別為每百萬 token 1.5 與 0.3 美元，比清單中同級的 Gemini 3.5 Flash（3.0）便宜。
+- **移除失效的 GPT-4o Audio Preview** 🧹 — 計費表裡留著一個 OpenRouter 已無此 ID 的條目，選不到也不會計費，直接刪除。整份模型清單與計費表已重新對照 OpenRouter API 逐一核對過。
+
 ### [v1.0.11]
 - **修正錄音中 Esc 沒有作用** 🔇 — 原本的取消鍵只掛在 Flutter widget 的鍵盤監聽，只有 ZeroType 視窗本身有焦點時才收得到；但實際錄音時焦點幾乎都在別的應用程式。改用低階鍵盤鉤子偵測 Esc，只看不攔（一律放行給其他 app），只有錄音中才會觸發取消；取消事件會寫進「紀錄」分頁。
 - **預設快捷鍵改為 `Alt + Z`** ⌨️ — `Alt + Space` 在 Windows 是系統保留組合鍵（開啟視窗系統選單），跟這顆熱鍵搶焦點，改用不會跟系統衝突的 `Alt + Z`。
