@@ -247,6 +247,15 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       '逐字轉錄音檔內容。維持說話者原本的語言，中文一律輸出繁體中文（台灣）。\n'
       '不要翻譯、不要說明、不要加任何前後語，只輸出轉錄結果本身。';
 
+  /// 第二段偶爾會在短句尾巴憑空補一個 `_`（實測 12 次約 2 次）。提示詞壓不掉：
+  /// 覆寫區塊點名禁止「底線」時某些輸入失守，改成不點名則換另一批輸入失守，
+  /// 兩種寫法的總失敗率一樣。這是確定性的髒字元，用程式砍比繼續調提示詞可靠。
+  /// 只有第一段逐字稿本來就沒有 `_` 時才砍——使用者真的講出底線就不該被吃掉。
+  static String stripPhantomUnderscore(String corrected, String raw) =>
+      raw.contains('_')
+          ? corrected
+          : corrected.replaceFirst(RegExp(r'\s*_+$'), '');
+
   /// 第二段純文字處理：把使用者調過的格式規則原封不動搬過來，只加一句改寫框架，
   /// 讓它知道處理對象是文字而不是音檔。這裡有真實文字當輸入，範例就不再是
   /// 唯一可抄的東西了。
@@ -258,6 +267,22 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       '以下規則原本用於音訊轉錄，現在改為套用在「已經轉錄好的文字」上。\n'
       '規則與範例只是格式參考，它們的內容不得出現在輸出中。只輸出處理後的文字。\n\n'
       '$rulesPrompt\n\n'
+      // notes: 覆寫區塊放在規則之後、待處理文字之前——規則檔裡「內容來自隨附的音檔」
+      // 「音檔為空就輸出空字串」在第二段是假前提，模型找不到音檔會判定沒有輸入，
+      // 於是回問或加前言（實測「天使多情」5 次有 3 次中招）。靠開頭那句框架壓不住，
+      // 要在規則後面用近因覆寫才有效（實測 5/5 乾淨，其他規則不受影響）。
+      // 刻意不去 replace 規則檔內文：那份是使用者可編輯的，字串比對隨時會失效。
+      '--- 純文字模式，以下覆寫上方規則 ---\n'
+      '- 上方規則提到的「音檔」，本次一律改指下方的「待處理文字」。'
+      '本次沒有音檔，不代表沒有輸入。\n'
+      '- 待處理文字不論多短都是有效內容，若已符合規則就原樣輸出。\n'
+      '- 不得回問、不得說明、不得加前言，輸出只能是處理後的文字本身。\n'
+      // notes: 短輸入沒別的規則可套時，模型會在句尾憑空補一個 `_`
+      // （「天使多情」「風流倜儻」都中過）。當時來源是 step_4 的「口語描述還原成字元」，
+      // 那條規則後來整條刪了，但這句留著——只要規則檔還有任何「偵測到 X 就替換」，
+      // 沒東西可套的短輸入就會誘發同一種發明行為，這是最後一道防線。
+      '- 不得補上待處理文字裡沒有的字元或符號（底線、括號、省略號等），'
+      '標點只能加在語意斷點上。\n\n'
       '$correctionPrompt'
       '--- 待處理文字 ---\n$text';
 
@@ -307,7 +332,7 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       );
       if (corrected.text.isEmpty) return result;
       return (
-        text: corrected.text,
+        text: stripPhantomUnderscore(corrected.text, result.text),
         inputTokens: _sumTokens(result.inputTokens, corrected.inputTokens),
         outputTokens: _sumTokens(result.outputTokens, corrected.outputTokens),
       );
