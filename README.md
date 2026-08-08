@@ -20,7 +20,7 @@
 - 按下 `Esc` 或點擊取消按鈕可中止錄音
 
 ### 🧠 AI 驅動的語音辨識
-- 支援 **OpenAI**（`gpt-4o-transcribe`）、**Google Gemini**（`gemini-*`）與 **OpenRouter**（一把 Key 通吃多家模型）三種語音辨識後端
+- 支援 **OpenAI**、**Google Gemini** 與 **OpenRouter**（一把 Key 通吃多家模型）三種語音辨識後端
 - OpenRouter 模型清單由官方 API 線上取得（只列支援音訊輸入的模型），下拉選單直接顯示每百萬 token 費率並標示「推薦」；離線時退回內建清單
 - 免費模型（`:free`）排在清單最後並附可用性警告，僅建議測試用
 - 辨識完成後，結果自動貼至游標所在位置（模擬 `Ctrl+V`）
