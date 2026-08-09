@@ -426,7 +426,10 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
 
       print('[ZeroType] Simulating paste...');
       const channel = MethodChannel('com.zerotype.app/keyboard');
-      await channel.invokeMethod('simulatePaste');
+      final pasted = await channel.invokeMethod<bool>('simulatePaste');
+      if (pasted == false) {
+        _log.error('焦點切不回原本的視窗，沒有貼上；文字已複製到剪貼簿');
+      }
 
       _log.info('文字：${result.text}');
       state = const ZeroTypeState();

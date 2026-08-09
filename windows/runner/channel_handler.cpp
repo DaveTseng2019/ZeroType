@@ -89,36 +89,48 @@ static void RememberPasteTarget() {
   g_paste_target = hwnd;
 }
 
-// 把焦點切回目標視窗。
+// 把焦點切回目標視窗。切成功（或本來就沒有目標可切）回 true。
 //
-// SetForegroundWindow 對非前景行程通常會被 Windows 拒絕，而 ZeroType 正好
-// 就不是前景（使用者是在別的 app 裡按熱鍵的）。附掛到目標的輸入佇列才拿得到
-// 權限，這是這個限制的標準繞法。
-static void FocusPasteTarget() {
+// SetForegroundWindow 對非前景行程通常會被 Windows 拒絕。前景權限屬於「當下的
+// 前景執行緒」，所以要附掛到它的輸入佇列才拿得到 —— 附掛到 target 的執行緒沒有
+// 用，target 此刻正好就不是前景。
+static bool FocusPasteTarget() {
   HWND target = g_paste_target;
-  if (!target || !IsWindow(target)) return;
-  if (GetForegroundWindow() == target) return;  // 焦點沒跑掉，不必動
+  if (!target || !IsWindow(target)) return true;  // 沒目標：照舊貼給目前前景
+  HWND fg = GetForegroundWindow();
+  if (fg == target) return true;  // 焦點沒跑掉，不必動
 
-  // SetForegroundWindow 對非前景行程通常會被 Windows 拒絕，附掛到目標的輸入
-  // 佇列才拿得到權限。
-  //
   // notes: 只做 SetForegroundWindow，不要再 SetFocus(target) —— target 是頂層
   // 視窗，附掛狀態下對它 SetFocus 會把鍵盤焦點從編輯子視窗搶走，Ctrl+V 就打進
   // 外框而不是編輯區。SetForegroundWindow 本來就會還原視窗內部原本的焦點。
   DWORD self = GetCurrentThreadId();
-  DWORD other = GetWindowThreadProcessId(target, nullptr);
-  BOOL attached = (self != other) && AttachThreadInput(self, other, TRUE);
+  DWORD fg_thread = fg ? GetWindowThreadProcessId(fg, nullptr) : 0;
+  DWORD target_thread = GetWindowThreadProcessId(target, nullptr);
+  BOOL fg_attached =
+      fg_thread && fg_thread != self && AttachThreadInput(self, fg_thread, TRUE);
+  BOOL target_attached = target_thread != self && target_thread != fg_thread &&
+                         AttachThreadInput(self, target_thread, TRUE);
+
+  if (IsIconic(target)) ShowWindow(target, SW_RESTORE);
   SetForegroundWindow(target);
-  if (attached) AttachThreadInput(self, other, FALSE);
-  // 焦點切換要一點時間才會落定，太快送 Ctrl+V 會打在切換的空檔。
-  // 這裡是 UI 執行緒，但此刻畫面停在「已完成」，50ms 看不出來。
-  Sleep(50);
+
+  if (fg_attached) AttachThreadInput(self, fg_thread, FALSE);
+  if (target_attached) AttachThreadInput(self, target_thread, FALSE);
+
+  // 焦點切換要一點時間才會落定，太快送 Ctrl+V 會打在切換的空檔。等到真的切過去
+  // 再送；切不過去就回 false，寧可不貼也不要貼進別人的視窗（文字還在剪貼簿）。
+  // 這裡是 UI 執行緒，但此刻畫面停在「已完成」，這點延遲看不出來。
+  for (int i = 0; i < 12; ++i) {
+    Sleep(25);
+    if (GetForegroundWindow() == target) return true;
+  }
+  return false;
 }
 
 // Simulates Ctrl+V (Windows paste shortcut) using Win32 SendInput.
 // Equivalent to macOS CGEvent Cmd+V in AppDelegate.swift.
-static void SimulatePaste() {
-  FocusPasteTarget();
+static bool SimulatePaste() {
+  if (!FocusPasteTarget()) return false;
 
   INPUT inputs[4] = {};
 
@@ -141,6 +153,7 @@ static void SimulatePaste() {
   inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
 
   SendInput(4, inputs, sizeof(INPUT));
+  return true;
 }
 
 // ── Esc 取消錄音的低階鍵盤鉤子 ──────────────────────────────────────────
@@ -175,8 +188,7 @@ void SetupChannels(flutter::BinaryMessenger* messenger) {
          std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
              result) {
         if (call.method_name() == "simulatePaste") {
-          SimulatePaste();
-          result->Success(nullptr);
+          result->Success(flutter::EncodableValue(SimulatePaste()));
         } else if (call.method_name() == "rememberPasteTarget") {
           RememberPasteTarget();
           result->Success(nullptr);
