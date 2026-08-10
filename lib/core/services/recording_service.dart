@@ -185,6 +185,42 @@ bool hasAnySound(Uint8List pcm, {int sampleRate = kRecordSampleRate}) {
   return false;
 }
 
+/// 精簡模式判定「有人在講話」的振幅門檻。振幅是 [_emitAmplitude] 正規化過的
+/// 0~1（-50 dBFS → 0，-5 dBFS → 1），0.15 約等於 -43 dBFS。
+///
+/// notes: 寫死沒有 UI。這是實體世界的旋鈕 —— 藍牙耳機整段音量偏小，
+/// 話還沒講完就被切要調低，講完了不停要調高。要調的是這裡跟 [kQuietHold]。
+const double kSpeechAmplitude = 0.15;
+
+/// 精簡模式要連續安靜多久才算「講完了」
+const Duration kQuietHold = Duration(milliseconds: 1500);
+
+/// 精簡模式的自動停止判斷：開口過，而且已經安靜滿 [hold]。
+///
+/// 「開口過」是必要條件 —— 沒有它的話，使用者按下熱鍵後還沒開口的那段安靜
+/// 就會直接把錄音收掉。抽成類別純粹是為了能測（同 [MicReadyGate]）。
+class QuietGate {
+  QuietGate({this.threshold = kSpeechAmplitude, this.hold = kQuietHold});
+
+  final double threshold;
+  final Duration hold;
+
+  bool _heardSpeech = false;
+  DateTime? _quietSince;
+
+  /// 回 true 代表可以停止錄音了
+  bool accept(double amplitude, DateTime now) {
+    if (amplitude >= threshold) {
+      _heardSpeech = true;
+      _quietSince = null;
+      return false;
+    }
+    if (!_heardSpeech) return false;
+    _quietSince ??= now;
+    return now.difference(_quietSince!) >= hold;
+  }
+}
+
 /// 從 [devices] 找出 [deviceId] 指定的裝置。
 /// 回 null 代表用系統預設 —— 沒指定，或指定的裝置已拔除／藍牙已斷線。
 InputDevice? resolveInputDevice(List<InputDevice> devices, String? deviceId) {

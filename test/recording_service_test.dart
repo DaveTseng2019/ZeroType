@@ -281,4 +281,41 @@ void main() {
       }
     });
   });
+
+  group('QuietGate（精簡模式自動停止）', () {
+    final t0 = DateTime(2026, 1, 1);
+    DateTime at(int ms) => t0.add(Duration(milliseconds: ms));
+
+    test('還沒開口前的安靜不算數，等多久都不停', () {
+      final gate = QuietGate();
+      // 使用者按了熱鍵但遲遲沒講話：這裡若回 true，錄音會在他開口前就被收掉
+      for (var ms = 0; ms <= 10000; ms += 100) {
+        expect(gate.accept(0.0, at(ms)), isFalse, reason: 'ms=$ms');
+      }
+    });
+
+    test('開口後連續安靜滿 hold 才停', () {
+      final gate = QuietGate(hold: const Duration(milliseconds: 1500));
+      expect(gate.accept(0.5, at(0)), isFalse); // 講話中
+      expect(gate.accept(0.0, at(100)), isFalse);
+      expect(gate.accept(0.0, at(1500)), isFalse); // 安靜 1400ms，還差一點
+      expect(gate.accept(0.0, at(1600)), isTrue); // 安靜滿 1500ms
+    });
+
+    test('句中停頓會重新計時，不會把一句話切成兩半', () {
+      final gate = QuietGate(hold: const Duration(milliseconds: 1500));
+      gate.accept(0.5, at(0));
+      expect(gate.accept(0.0, at(1000)), isFalse); // 停頓 1000ms
+      expect(gate.accept(0.5, at(1100)), isFalse); // 又開口，計時歸零
+      expect(gate.accept(0.0, at(2000)), isFalse); // 從 2000 重新算
+      expect(gate.accept(0.0, at(2500)), isFalse);
+      expect(gate.accept(0.0, at(3600)), isTrue);
+    });
+
+    test('門檻以下的底噪算安靜，門檻本身算講話', () {
+      final gate = QuietGate(threshold: 0.15, hold: Duration.zero);
+      expect(gate.accept(0.15, at(0)), isFalse); // 等於門檻 = 有講話
+      expect(gate.accept(0.14, at(1)), isTrue); // 低於門檻 = 安靜
+    });
+  });
 }

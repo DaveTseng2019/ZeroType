@@ -23,6 +23,9 @@ class AppConstants {
   static const String inputDeviceIdKey = 'input_device_id';
   static const String noiseGateStrengthKey = 'noise_gate_strength';
   static const String recordWarmupMsKey = 'record_warmup_ms';
+
+  /// 精簡模式貼上後要不要自動按 Enter 送出（預設要）
+  static const String quickAutoEnterKey = 'quick_auto_enter';
   static const String fontSizesKey = 'font_sizes_json';
 
   static const String githubRepoUrl = 'https://github.com/DaveTseng2019/ZeroType';

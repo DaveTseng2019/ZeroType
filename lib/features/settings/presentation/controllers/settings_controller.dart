@@ -52,6 +52,9 @@ class SettingsController extends AsyncNotifier<SettingsState> {
         launchAtStartup: isLaunchEnabled,
         startupMinimized: startupMinimized,
         hotkey: hotkey,
+        quickHotkey: hotkeyService.quickHotkey,
+        quickAutoEnter:
+            prefs.getBool(AppConstants.quickAutoEnterKey) ?? true,
         isAccessibilityAuthorized: isAccessibilityAuthorized,
         isMicrophoneAuthorized: isMicrophoneAuthorized,
         soundEnabled: soundEnabled,
@@ -103,15 +106,18 @@ class SettingsController extends AsyncNotifier<SettingsState> {
     }
   }
 
-  Future<void> startRecordingHotkey() async {
-    print('[SettingsController] Starting hotkey recording...');
+  Future<void> startRecordingHotkey({bool quick = false}) async {
+    print('[SettingsController] Starting hotkey recording (quick: $quick)...');
     final currentState = state.value;
     if (currentState == null) return;
 
     // Disable global hotkey BEFORE showing overlay to prevent accidental triggers
     await hotkeyService.pause();
 
-    state = AsyncData(currentState.copyWith(isRecordingHotkey: true));
+    state = AsyncData(currentState.copyWith(
+      isRecordingHotkey: true,
+      isEditingQuickHotkey: quick,
+    ));
   }
 
   void stopRecordingHotkey() {
@@ -158,19 +164,43 @@ class SettingsController extends AsyncNotifier<SettingsState> {
       scope: HotKeyScope.system,
     );
 
-    await hotkeyService.updateHotkey(newHotKey);
-    
+    final quick = state.value?.isEditingQuickHotkey ?? false;
+    // 兩組設成同一個組合的話，第二次 register 會失敗，變成有一組熱鍵無聲失效。
+    final other = quick ? hotkeyService.currentHotkey : hotkeyService.quickHotkey;
+    if (_sameCombo(newHotKey, other)) {
+      print('[SettingsController] Hotkey clashes with the other one, ignoring.');
+      stopRecordingHotkey();
+      return;
+    }
+
+    await hotkeyService.updateHotkey(newHotKey, quick: quick);
+
     // Stop recording and trigger refresh
     final currentState = state.value;
     if (currentState != null) {
       state = AsyncData(currentState.copyWith(
         isRecordingHotkey: false,
-        hotkey: newHotKey,
+        hotkey: quick ? null : newHotKey,
+        quickHotkey: quick ? newHotKey : null,
       ));
     }
     
     // Resume local hotkey (already handled in stopRecordingHotkey but stay safe)
     hotkeyService.resume();
+  }
+
+  static bool _sameCombo(HotKey a, HotKey b) {
+    final am = (a.modifiers ?? const <HotKeyModifier>[]).toSet();
+    final bm = (b.modifiers ?? const <HotKeyModifier>[]).toSet();
+    return a.key == b.key && am.length == bm.length && am.containsAll(bm);
+  }
+
+  Future<void> toggleQuickAutoEnter(bool value) async {
+    await appPrefs.setBool(AppConstants.quickAutoEnterKey, value);
+    final currentState = state.value;
+    if (currentState != null) {
+      state = AsyncData(currentState.copyWith(quickAutoEnter: value));
+    }
   }
 
   Future<void> toggleSound(bool value) async {

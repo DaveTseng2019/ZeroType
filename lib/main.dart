@@ -125,6 +125,7 @@ class _AppInitializerState extends ConsumerState<_AppInitializer>
   Future<void> _initializeServices() async {
     await _hotkeyService.initialize();
     _hotkeyService.setCallback(_onHotkeyActivated);
+    _hotkeyService.setQuickCallback(_onQuickHotkeyActivated);
 
     await _trayService.initialize(
       onShowWindow: _showWindow,
@@ -139,6 +140,12 @@ class _AppInitializerState extends ConsumerState<_AppInitializer>
 
   Future<void> _onHotkeyActivated() async {
     await ref.read(zeroTypeControllerProvider.notifier).toggleRecording();
+  }
+
+  Future<void> _onQuickHotkeyActivated() async {
+    await ref
+        .read(zeroTypeControllerProvider.notifier)
+        .toggleRecording(quick: true);
   }
 
   void _showWindow() {

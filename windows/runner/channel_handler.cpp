@@ -9,6 +9,7 @@
 
 #include <atomic>
 #include <memory>
+#include <variant>
 
 // Keep channels alive for the duration of the app
 static std::shared_ptr<flutter::MethodChannel<flutter::EncodableValue>>
@@ -129,10 +130,11 @@ static bool FocusPasteTarget() {
 
 // Simulates Ctrl+V (Windows paste shortcut) using Win32 SendInput.
 // Equivalent to macOS CGEvent Cmd+V in AppDelegate.swift.
-static bool SimulatePaste() {
+// press_enter：精簡模式用，貼上後補一個 Enter 把訊息送出去。
+static bool SimulatePaste(bool press_enter) {
   if (!FocusPasteTarget()) return false;
 
-  INPUT inputs[4] = {};
+  INPUT inputs[6] = {};
 
   // Key down: Ctrl
   inputs[0].type = INPUT_KEYBOARD;
@@ -152,7 +154,20 @@ static bool SimulatePaste() {
   inputs[3].ki.wVk = VK_CONTROL;
   inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
 
-  SendInput(4, inputs, sizeof(INPUT));
+  UINT count = 4;
+  if (press_enter) {
+    // 跟 Ctrl+V 同一批送出，中間不留空隙 —— 分兩次 SendInput 的話，Enter 可能
+    // 趕在目標視窗處理完貼上之前抵達，送出去的就是一則空訊息。
+    inputs[4].type = INPUT_KEYBOARD;
+    inputs[4].ki.wVk = VK_RETURN;
+
+    inputs[5].type = INPUT_KEYBOARD;
+    inputs[5].ki.wVk = VK_RETURN;
+    inputs[5].ki.dwFlags = KEYEVENTF_KEYUP;
+    count = 6;
+  }
+
+  SendInput(count, inputs, sizeof(INPUT));
   return true;
 }
 
@@ -188,7 +203,17 @@ void SetupChannels(flutter::BinaryMessenger* messenger) {
          std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
              result) {
         if (call.method_name() == "simulatePaste") {
-          result->Success(flutter::EncodableValue(SimulatePaste()));
+          bool press_enter = false;
+          if (const auto* args =
+                  std::get_if<flutter::EncodableMap>(call.arguments())) {
+            const auto it = args->find(flutter::EncodableValue("pressEnter"));
+            if (it != args->end()) {
+              if (const auto* v = std::get_if<bool>(&it->second)) {
+                press_enter = *v;
+              }
+            }
+          }
+          result->Success(flutter::EncodableValue(SimulatePaste(press_enter)));
         } else if (call.method_name() == "rememberPasteTarget") {
           RememberPasteTarget();
           result->Success(nullptr);

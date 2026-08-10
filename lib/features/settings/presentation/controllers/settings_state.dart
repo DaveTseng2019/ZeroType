@@ -10,9 +10,12 @@ class SettingsState {
     this.launchAtStartup = false,
     this.startupMinimized = false,
     required this.hotkey,
+    required this.quickHotkey,
     this.isAccessibilityAuthorized = false,
     this.isMicrophoneAuthorized = false,
     this.isRecordingHotkey = false,
+    this.isEditingQuickHotkey = false,
+    this.quickAutoEnter = true,
     this.soundEnabled = true,
     this.startSound = kDefaultStartSound,
     this.stopSound = kDefaultStopSound,
@@ -30,9 +33,18 @@ class SettingsState {
   final bool launchAtStartup;
   final bool startupMinimized;
   final HotKey hotkey;
+
+  /// 精簡模式熱鍵：講完自動停、貼上後自動送出
+  final HotKey quickHotkey;
   final bool isAccessibilityAuthorized;
   final bool isMicrophoneAuthorized;
   final bool isRecordingHotkey;
+
+  /// 錄製中的熱鍵是哪一組（只在 [isRecordingHotkey] 為 true 時有意義）
+  final bool isEditingQuickHotkey;
+
+  /// 精簡模式貼上後要不要自動按 Enter 送出
+  final bool quickAutoEnter;
   final bool soundEnabled;
   final String startSound;
   final String stopSound;
@@ -61,9 +73,12 @@ class SettingsState {
     bool? launchAtStartup,
     bool? startupMinimized,
     HotKey? hotkey,
+    HotKey? quickHotkey,
     bool? isAccessibilityAuthorized,
     bool? isMicrophoneAuthorized,
     bool? isRecordingHotkey,
+    bool? isEditingQuickHotkey,
+    bool? quickAutoEnter,
     bool? soundEnabled,
     String? startSound,
     String? stopSound,
@@ -81,11 +96,15 @@ class SettingsState {
       launchAtStartup: launchAtStartup ?? this.launchAtStartup,
       startupMinimized: startupMinimized ?? this.startupMinimized,
       hotkey: hotkey ?? this.hotkey,
+      quickHotkey: quickHotkey ?? this.quickHotkey,
       isAccessibilityAuthorized:
           isAccessibilityAuthorized ?? this.isAccessibilityAuthorized,
       isMicrophoneAuthorized:
           isMicrophoneAuthorized ?? this.isMicrophoneAuthorized,
       isRecordingHotkey: isRecordingHotkey ?? this.isRecordingHotkey,
+      isEditingQuickHotkey:
+          isEditingQuickHotkey ?? this.isEditingQuickHotkey,
+      quickAutoEnter: quickAutoEnter ?? this.quickAutoEnter,
       soundEnabled: soundEnabled ?? this.soundEnabled,
       startSound: startSound ?? this.startSound,
       stopSound: stopSound ?? this.stopSound,

@@ -28,6 +28,10 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
   DateTime? _recordingStartTime;
   Timer? _maxDurationTimer;
 
+  /// 精簡模式：不用再按一次熱鍵停止（講完自動停），文字貼上後自動按 Enter 送出
+  bool _quickMode = false;
+  QuietGate? _quietGate;
+
   @override
   ZeroTypeState build() {
     _recordingService = RecordingService();
@@ -67,12 +71,12 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
     }
   }
 
-  Future<void> toggleRecording() async {
+  Future<void> toggleRecording({bool quick = false}) async {
     print('[ZeroTypeController] Hotkey triggered! Current status: ${state.status}');
     if (state.status == ZeroTypeStatus.recording) {
       await _stopAndProcess();
     } else if (state.status == ZeroTypeStatus.idle) {
-      await _startRecording();
+      await _startRecording(quick: quick);
     } else if (state.status == ZeroTypeStatus.cancelling) {
       return;
     } else {
@@ -96,8 +100,10 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
     await _hideNativeOverlay();
   }
 
-  Future<void> _startRecording() async {
+  Future<void> _startRecording({bool quick = false}) async {
     _cancelled = false;
+    _quickMode = quick;
+    _quietGate = quick ? QuietGate() : null;
 
     // 趁焦點還在使用者剛剛打字的地方，先把貼上目標記下來。
     // 要在任何 overlay／視窗操作之前，不然記到的就不是原本那個視窗了。
@@ -195,9 +201,17 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
             unawaited(_showNativeOverlay('recording', '錄音中'));
           },
           onAmplitude: (amp) {
-            if (ref.mounted && !_cancelled) {
-              state = state.copyWith(amplitude: amp);
-              _updateNativeAmplitude(amp);
+            if (!ref.mounted || _cancelled) return;
+            state = state.copyWith(amplitude: amp);
+            _updateNativeAmplitude(amp);
+            // 精簡模式：講完就自動送出，不必再按一次熱鍵。
+            // 只在 recording 判斷 —— warmingUp 的音訊會被丟掉，
+            // saving 之後 _stopAndProcess 已經在跑了。
+            if (state.status == ZeroTypeStatus.recording &&
+                (_quietGate?.accept(amp, DateTime.now()) ?? false)) {
+              _quietGate = null;
+              print('[ZeroType] Quick mode: silence detected, auto-stopping.');
+              unawaited(_stopAndProcess());
             }
           },
         ),
@@ -426,7 +440,10 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
 
       print('[ZeroType] Simulating paste...');
       const channel = MethodChannel('com.zerotype.app/keyboard');
-      final pasted = await channel.invokeMethod<bool>('simulatePaste');
+      final autoEnter = _quickMode &&
+          (appPrefs.getBool(AppConstants.quickAutoEnterKey) ?? true);
+      final pasted = await channel
+          .invokeMethod<bool>('simulatePaste', {'pressEnter': autoEnter});
       if (pasted == false) {
         _log.error('焦點切不回原本的視窗，沒有貼上；文字已複製到剪貼簿');
       }

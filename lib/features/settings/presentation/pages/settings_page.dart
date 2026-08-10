@@ -92,25 +92,39 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                 _SettingsCard(
                   children: [
                     settings.when(
-                      data: (data) => InkWell(
-                        onTap: () => ref.read(settingsControllerProvider.notifier).startRecordingHotkey(),
-                        borderRadius: BorderRadius.circular(16),
-                        child: _SettingTile(
-                          icon: Icons.keyboard,
-                          title: '全局錄音快捷鍵',
-                          subtitle: '按下此組合鍵即可開始/停止錄音',
-                          trailing: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.primary.withAlpha(20),
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(
-                                color: Theme.of(context).colorScheme.primary.withAlpha(50),
-                              ),
-                            ),
-                            child: _buildHotkeyDisplay(context, data.hotkey),
+                      data: (data) => Column(
+                        children: [
+                          _buildHotkeyTile(
+                            context,
+                            ref,
+                            icon: Icons.keyboard,
+                            title: '全局錄音快捷鍵',
+                            subtitle: '按下此組合鍵即可開始/停止錄音',
+                            hotkey: data.hotkey,
                           ),
-                        ),
+                          const Divider(height: 1, indent: 56),
+                          _buildHotkeyTile(
+                            context,
+                            ref,
+                            icon: Icons.bolt,
+                            title: '精簡模式快捷鍵',
+                            subtitle: '講完就自動停止錄音，不必再按一次',
+                            hotkey: data.quickHotkey,
+                            quick: true,
+                          ),
+                          const Divider(height: 1, indent: 56),
+                          _SettingTile(
+                            icon: Icons.keyboard_return,
+                            title: '精簡模式自動送出',
+                            subtitle: '文字貼上後自動按 Enter；關閉則只貼上不送出',
+                            trailing: Switch(
+                              value: data.quickAutoEnter,
+                              onChanged: (val) => ref
+                                  .read(settingsControllerProvider.notifier)
+                                  .toggleQuickAutoEnter(val),
+                            ),
+                          ),
+                        ],
                       ),
                       loading: () => const _LoadingTile(),
                       error: (_, __) => const SizedBox.shrink(),
@@ -516,6 +530,39 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
             orElse: () => const SizedBox.shrink(),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildHotkeyTile(
+    BuildContext context,
+    WidgetRef ref, {
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required HotKey hotkey,
+    bool quick = false,
+  }) {
+    return InkWell(
+      onTap: () => ref
+          .read(settingsControllerProvider.notifier)
+          .startRecordingHotkey(quick: quick),
+      borderRadius: BorderRadius.circular(16),
+      child: _SettingTile(
+        icon: icon,
+        title: title,
+        subtitle: subtitle,
+        trailing: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.primary.withAlpha(20),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(
+              color: Theme.of(context).colorScheme.primary.withAlpha(50),
+            ),
+          ),
+          child: _buildHotkeyDisplay(context, hotkey),
+        ),
       ),
     );
   }
