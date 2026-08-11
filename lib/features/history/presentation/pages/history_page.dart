@@ -106,7 +106,7 @@ class _PageHeader extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('清除全部記錄'),
-        content: const Text('確定要刪除所有歷史記錄與音檔嗎？此操作無法復原。'),
+        content: const Text('確定要刪除所有歷史記錄、音檔與執行紀錄嗎？此操作無法復原。'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),

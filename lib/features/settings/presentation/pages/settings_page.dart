@@ -59,6 +59,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
     final themeMode = ref.watch(themeControllerProvider);
     final isDark = themeMode == ThemeMode.dark;
     final settings = ref.watch(settingsControllerProvider);
+    final fontSizes = ref.watch(fontSizesProvider);
 
     // Once the controller finishes its initial async build, immediately
     // re-invalidate to snapshot the freshest OS permission state.
@@ -82,6 +83,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                   '設定',
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                         fontWeight: FontWeight.bold,
+                        fontSize: fontSizes.pageTitle,
                       ),
                 ),
                 const SizedBox(height: 32),
@@ -245,7 +247,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                               Text(
                                 '${data.maxRecordingMinutes} 分鐘',
                                 style: TextStyle(
-                                  fontSize: 13,
+                                  fontSize: fontSizes.description,
                                   fontWeight: FontWeight.w600,
                                   color: Theme.of(context).colorScheme.primary,
                                 ),
@@ -307,7 +309,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                                     ? '關閉'
                                     : '${(data.recordWarmupMs / 1000).toStringAsFixed(1)} 秒',
                                 style: TextStyle(
-                                  fontSize: 13,
+                                  fontSize: fontSizes.description,
                                   fontWeight: FontWeight.w600,
                                   color: Theme.of(context).colorScheme.primary,
                                 ),
@@ -349,7 +351,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                                     ? '關閉'
                                     : data.noiseGateStrength.toStringAsFixed(1),
                                 style: TextStyle(
-                                  fontSize: 13,
+                                  fontSize: fontSizes.description,
                                   fontWeight: FontWeight.w600,
                                   color:
                                       Theme.of(context).colorScheme.primary,
@@ -398,11 +400,25 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                         icon: Icons.volume_up,
                         title: '啟用音效',
                         subtitle: '開始與停止錄音時播放提示音',
-                        trailing: Switch(
-                          value: data.soundEnabled,
-                          onChanged: (val) => ref
-                              .read(settingsControllerProvider.notifier)
-                              .toggleSound(val),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Switch(
+                              value: data.soundEnabled,
+                              onChanged: (val) => ref
+                                  .read(settingsControllerProvider.notifier)
+                                  .toggleSound(val),
+                            ),
+                            const SizedBox(width: 8),
+                            _SoundSequenceButton(
+                              enabled: data.soundEnabled,
+                              paths: [
+                                data.startSound,
+                                data.recordingStoppedSound,
+                                data.stopSound,
+                              ],
+                            ),
+                          ],
                         ),
                       ),
                       loading: () => const _LoadingTile(),
@@ -416,6 +432,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                         subtitle: '按下快捷鍵開始錄音時播放',
                         selectedPath: data.startSound,
                         enabled: data.soundEnabled,
+                        slot: 0,
                         onChanged: (path) => ref
                             .read(settingsControllerProvider.notifier)
                             .setStartSound(path),
@@ -431,6 +448,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                         subtitle: '再次按下快捷鍵、麥克風真正關閉時播放',
                         selectedPath: data.recordingStoppedSound,
                         enabled: data.soundEnabled,
+                        slot: 1,
                         onChanged: (path) => ref
                             .read(settingsControllerProvider.notifier)
                             .setRecordingStoppedSound(path),
@@ -446,12 +464,31 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                         subtitle: '文字辨識完成、貼上前播放',
                         selectedPath: data.stopSound,
                         enabled: data.soundEnabled,
+                        slot: 2,
                         onChanged: (path) => ref
                             .read(settingsControllerProvider.notifier)
                             .setStopSound(path),
                       ),
                       loading: () => const _LoadingTile(),
                       error: (_, __) => const SizedBox.shrink(),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    _SettingTile(
+                      icon: Icons.settings_backup_restore,
+                      title: '恢復預設音效',
+                      subtitle: '三個音效與開關都回到初始設定',
+                      trailing: OutlinedButton(
+                        onPressed: () {
+                          final notifier =
+                              ref.read(settingsControllerProvider.notifier);
+                          notifier.toggleSound(true);
+                          notifier.setStartSound(kDefaultStartSound);
+                          notifier.setRecordingStoppedSound(
+                              kDefaultRecordingStoppedSound);
+                          notifier.setStopSound(kDefaultStopSound);
+                        },
+                        child: const Text('恢復'),
+                      ),
                     ),
                   ],
                 ),
@@ -618,7 +655,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'sectionHeader＝區塊標題，itemTitle＝項目標題，description＝項目說明，'
+                  '由上而下依序是頁面標題、區塊標題、項目標題、項目說明，'
                   '單位 px，皆不可小於 ${FontSizes.minSize.toStringAsFixed(0)}。',
                   style: const TextStyle(fontSize: 14),
                 ),
@@ -988,7 +1025,7 @@ class _SettingsCard extends StatelessWidget {
   }
 }
 
-class _PermissionTile extends StatelessWidget {
+class _PermissionTile extends ConsumerWidget {
   final IconData icon;
   final String title;
   final String subtitle;
@@ -1004,7 +1041,7 @@ class _PermissionTile extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     return _SettingTile(
       icon: icon,
       title: title,
@@ -1033,7 +1070,7 @@ class _PermissionTile extends StatelessWidget {
             style: TextStyle(
               color: isAuthorized ? Colors.green : Colors.red,
               fontWeight: FontWeight.bold,
-              fontSize: 13,
+              fontSize: ref.watch(fontSizesProvider).description,
             ),
           ),
           const SizedBox(width: 16),
@@ -1257,7 +1294,7 @@ class _UpdateCheckTileState extends State<_UpdateCheckTile> {
 /// 圖示上那個 Ø 的橘色
 const kBrandOrange = Color(0xFFEB5E14);
 
-class _InputDeviceTile extends StatelessWidget {
+class _InputDeviceTile extends ConsumerWidget {
   /// 空字串 = 系統預設
   final String selectedId;
   final List<InputDevice> devices;
@@ -1286,8 +1323,8 @@ class _InputDeviceTile extends StatelessWidget {
   }
 
   @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+  Widget build(BuildContext context, WidgetRef ref) {
+    final labelSize = ref.watch(fontSizesProvider).description;
     // 存的裝置已不存在（拔除／藍牙斷線）就顯示系統預設，錄音端也會自動退回
     final effectiveId =
         devices.any((d) => d.id == selectedId) ? selectedId : '';
@@ -1314,8 +1351,8 @@ class _InputDeviceTile extends StatelessWidget {
               child: Text(
                 label,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 13,
+                style: TextStyle(
+                  fontSize: labelSize,
                   fontWeight: FontWeight.w600,
                   color: kBrandOrange,
                 ),
@@ -1328,7 +1365,7 @@ class _InputDeviceTile extends StatelessWidget {
               child: Text(
                 e.value,
                 overflow: TextOverflow.ellipsis,
-                style: const TextStyle(fontSize: 13),
+                style: TextStyle(fontSize: labelSize),
               ),
             );
           }).toList(),
@@ -1341,13 +1378,21 @@ class _InputDeviceTile extends StatelessWidget {
   }
 }
 
-class _SoundPickerTile extends StatelessWidget {
+/// 連續播放時正在播第幾個音效（對應 [_SoundPickerTile.slot]），沒在播是 null。
+///
+/// notes: 只有這三個 tile 跟按鈕要共用，用全域 ValueNotifier 直接接；
+/// 之後有第二處要讀播放狀態再升成 provider。
+final ValueNotifier<int?> _playingSoundSlot = ValueNotifier<int?>(null);
+
+class _SoundPickerTile extends ConsumerWidget {
   final IconData icon;
   final String title;
   final String subtitle;
   final String selectedPath;
   final bool enabled;
   final ValueChanged<String> onChanged;
+  /// 在連續播放序列裡的位置，用來標示現在播的是哪一個。
+  final int slot;
 
   const _SoundPickerTile({
     required this.icon,
@@ -1356,11 +1401,13 @@ class _SoundPickerTile extends StatelessWidget {
     required this.selectedPath,
     required this.enabled,
     required this.onChanged,
+    required this.slot,
   });
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final cs = Theme.of(context).colorScheme;
+    final labelSize = ref.watch(fontSizesProvider).description;
     // 殘留的 macOS 路徑先對應成 Windows 內建提示音再找清單
     final mappedPath = kSystemSoundLabels.containsKey(selectedPath)
         ? selectedPath
@@ -1373,6 +1420,28 @@ class _SoundPickerTile extends StatelessWidget {
                 : kSystemSoundLabels.keys.first);
     final selectedLabel = kSystemSoundLabels[effectivePath] ?? '';
 
+    return ValueListenableBuilder<int?>(
+      valueListenable: _playingSoundSlot,
+      builder: (context, playingSlot, child) {
+        final isPlaying = playingSlot == slot;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          color: isPlaying ? cs.primary.withOpacity(0.10) : Colors.transparent,
+          child: _tile(
+              context, cs, labelSize, effectivePath, selectedLabel, isPlaying),
+        );
+      },
+    );
+  }
+
+  Widget _tile(
+    BuildContext context,
+    ColorScheme cs,
+    double labelSize,
+    String effectivePath,
+    String selectedLabel,
+    bool isPlaying,
+  ) {
     return _SettingTile(
       icon: icon,
       title: title,
@@ -1391,7 +1460,7 @@ class _SoundPickerTile extends StatelessWidget {
                   child: Text(
                     e.value,
                     style: TextStyle(
-                      fontSize: 13,
+                      fontSize: labelSize,
                       fontWeight: FontWeight.w500,
                       color: cs.onSurface,
                     ),
@@ -1401,7 +1470,7 @@ class _SoundPickerTile extends StatelessWidget {
               items: kSystemSoundLabels.entries.map((e) {
                 return DropdownMenuItem<String>(
                   value: e.key,
-                  child: Text(e.value, style: const TextStyle(fontSize: 13)),
+                  child: Text(e.value, style: TextStyle(fontSize: labelSize)),
                 );
               }).toList(),
               onChanged: enabled
@@ -1410,17 +1479,91 @@ class _SoundPickerTile extends StatelessWidget {
                     }
                   : null,
             ),
-            const SizedBox(width: 4),
-            IconButton(
-              tooltip: '預覽「$selectedLabel」',
-              icon: Icon(Icons.play_arrow_rounded, color: cs.primary, size: 20),
-              onPressed: enabled
+            const SizedBox(width: 8),
+            _PlayIconButton(
+              icon: isPlaying
+                  ? Icons.graphic_eq_rounded
+                  : Icons.play_arrow_rounded,
+              tooltip: isPlaying ? '播放中…' : '預覽「$selectedLabel」',
+              onTap: enabled
                   ? () => soundService.playPreview(effectivePath)
                   : null,
             ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 播放鍵：沿用歷史頁播放鍵的圓形底色樣式，設定頁這邊放大一號。
+class _PlayIconButton extends StatelessWidget {
+  const _PlayIconButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onTap,
+  });
+
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final color =
+        onTap != null ? cs.primary : cs.onSurface.withOpacity(0.35);
+    return Tooltip(
+      message: tooltip,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(24),
+        child: Container(
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: color.withOpacity(0.12),
+            shape: BoxShape.circle,
+          ),
+          child: Icon(icon, size: 24, color: color),
+        ),
+      ),
+    );
+  }
+}
+
+/// 依實際錄音流程的順序連續試聽：開始 → 錄音結束 → 辨識完成。
+class _SoundSequenceButton extends StatefulWidget {
+  const _SoundSequenceButton({required this.paths, required this.enabled});
+
+  final List<String> paths;
+  final bool enabled;
+
+  @override
+  State<_SoundSequenceButton> createState() => _SoundSequenceButtonState();
+}
+
+class _SoundSequenceButtonState extends State<_SoundSequenceButton> {
+  bool _playing = false;
+
+  Future<void> _play() async {
+    setState(() => _playing = true);
+    for (var i = 0; i < widget.paths.length; i++) {
+      _playingSoundSlot.value = i;
+      await soundService.playPreview(widget.paths[i]);
+      // notes: Windows 走 SND_ASYNC，playPreview 回來時最後一段還在響，
+      // 用固定間隔隔開；要精準就得改成同步播放並回報實際長度。
+      await Future.delayed(const Duration(milliseconds: 1200));
+    }
+    _playingSoundSlot.value = null;
+    if (mounted) setState(() => _playing = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _PlayIconButton(
+      icon: _playing ? Icons.graphic_eq_rounded : Icons.playlist_play_rounded,
+      tooltip: _playing ? '播放中…' : '連續播放三段音效範例',
+      onTap: widget.enabled && !_playing ? _play : null,
     );
   }
 }

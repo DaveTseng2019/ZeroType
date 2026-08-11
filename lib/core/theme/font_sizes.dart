@@ -32,14 +32,20 @@ class FontSizesController extends Notifier<FontSizes> {
   }
 }
 
-/// 全 App 共用的三級文字大小，可在設定頁以 JSON 編輯，存於 shared_preferences。
+/// 設定頁的四級文字大小，可在設定頁以 JSON 編輯，存於 shared_preferences。
+///
+/// 對照畫面：pageTitle =「設定」、sectionHeader =「快捷鍵」、
+/// itemTitle =「全局錄音快捷鍵」、description = 項目下方的說明文字。
 class FontSizes {
   const FontSizes({
+    this.pageTitle = 24,
     this.sectionHeader = 22,
-    this.itemTitle = 16,
+    this.itemTitle = 18,
     this.description = 15,
   });
 
+  /// 頁面標題（例如「設定」）
+  final double pageTitle;
   final double sectionHeader;
   final double itemTitle;
 
@@ -62,6 +68,7 @@ class FontSizes {
     }
 
     return FontSizes(
+      pageTitle: read('pageTitle', defaults.pageTitle),
       sectionHeader: read('sectionHeader', defaults.sectionHeader),
       itemTitle: read('itemTitle', defaults.itemTitle),
       description: read('description', defaults.description),
@@ -69,6 +76,7 @@ class FontSizes {
   }
 
   String toJson() => const JsonEncoder.withIndent('  ').convert({
+        'pageTitle': pageTitle,
         'sectionHeader': sectionHeader,
         'itemTitle': itemTitle,
         'description': description,

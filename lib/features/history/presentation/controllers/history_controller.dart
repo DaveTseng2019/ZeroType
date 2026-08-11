@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zero_type/core/di/injection.dart';
 import 'package:zero_type/features/history/entities/history_stats.dart';
 import 'package:zero_type/features/history/entities/transcription_record.dart';
+import 'package:zero_type/features/log/log_controller.dart';
 
 // ---------------------------------------------------------------------------
 // Stats provider — cumulative, persisted independently of the record list
@@ -121,5 +122,6 @@ class HistoryController extends AsyncNotifier<List<TranscriptionRecord>> {
     await historyRepository.clearAll();
     ref.invalidateSelf();
     ref.invalidate(historyStatsProvider);
+    ref.read(logControllerProvider.notifier).clear();
   }
 }
