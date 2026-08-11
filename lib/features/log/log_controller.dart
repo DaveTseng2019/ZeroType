@@ -28,7 +28,48 @@ class LogController extends Notifier<List<LogEntry>> {
   static const _maxEntries = 200;
 
   @override
-  List<LogEntry> build() => const [];
+  List<LogEntry> build() {
+    _restoreFromFile();
+    return const [];
+  }
+
+  /// 有紀錄檔就把內容讀回畫面。重開 app 之後記憶體是空的，但檔案還在 ——
+  /// 不讀回來的話畫面看起來像沒紀錄，檔案裡卻明明有。
+  ///
+  /// notes: 訊息本身可能有換行（轉寫文字裡的換行），所以認不出時間戳開頭的行
+  ///   一律當成上一筆的續行接回去，不要丟掉。
+  Future<void> _restoreFromFile() async {
+    try {
+      final file = await logFile();
+      if (!file.existsSync()) return;
+      final restored = <LogEntry>[];
+      for (final line in await file.readAsLines()) {
+        final m = _linePattern.firstMatch(line);
+        if (m == null) {
+          if (restored.isNotEmpty) {
+            final last = restored.removeLast();
+            restored
+                .add(LogEntry(last.at, last.level, '${last.message}\n$line'));
+          }
+          continue;
+        }
+        restored.add(LogEntry(
+          DateTime.parse(m.group(1)!),
+          m.group(2) == 'error' ? LogLevel.error : LogLevel.info,
+          m.group(3)!,
+        ));
+      }
+      if (restored.isEmpty) return;
+      // 檔案是舊到新，畫面是新到舊；讀回來的一律排在這次開機新增的後面
+      final merged = [...state, ...restored.reversed];
+      state =
+          merged.length > _maxEntries ? merged.sublist(0, _maxEntries) : merged;
+    } catch (_) {
+      // 讀不回來就算了，紀錄不該擋住程式
+    }
+  }
+
+  static final _linePattern = RegExp(r'^(\S+) \[(info|error)\] (.*)$');
 
   void info(String message) => _add(LogLevel.info, message);
 

@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zero_type/core/constants/model_pricing.dart';
+import 'package:zero_type/core/theme/font_sizes.dart';
 import 'package:zero_type/features/history/entities/history_stats.dart';
 import 'package:zero_type/features/history/entities/transcription_record.dart';
 import '../controllers/history_controller.dart';
@@ -87,13 +88,23 @@ class _PageHeader extends StatelessWidget {
             ],
           ),
         ),
+        TextButton.icon(
+          onPressed: () =>
+              ref.read(historyControllerProvider.notifier).openAudioFolder(),
+          icon: const Icon(Icons.folder_open_outlined, size: 20),
+          label: Text('開啟目錄',
+              style: TextStyle(fontSize: ref.watch(fontSizesProvider).itemTitle)),
+          style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+        ),
         if (records.isNotEmpty)
           TextButton.icon(
             onPressed: () => _confirmClearAll(context, ref),
             icon: const Icon(Icons.delete_sweep_outlined, size: 20),
-            label: const Text('全部清除', style: TextStyle(fontSize: 16)),
+            label: Text('全部清除',
+                style:
+                    TextStyle(fontSize: ref.watch(fontSizesProvider).itemTitle)),
             style: TextButton.styleFrom(
-              foregroundColor: Colors.red.withOpacity(0.8),
+              foregroundColor: Colors.orange.withOpacity(0.8),
               visualDensity: VisualDensity.compact,
             ),
           ),
@@ -340,14 +351,6 @@ class _HistoryItemState extends ConsumerState<_HistoryItem> {
                 tooltip: '複製文字',
                 onTap: () => ref.read(historyControllerProvider.notifier).copyText(record.text),
               ),
-              if (hasAudio)
-                _ActionIcon(
-                  icon: Icons.folder_open_outlined,
-                  tooltip: '開啟所在目錄',
-                  onTap: () => ref
-                      .read(historyControllerProvider.notifier)
-                      .openContainingFolder(record.audioPath!),
-                ),
               _ActionIcon(
                 icon: Icons.delete_outline,
                 tooltip: '刪除',

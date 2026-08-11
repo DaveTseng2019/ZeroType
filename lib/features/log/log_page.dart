@@ -2,9 +2,20 @@ import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:zero_type/core/constants/app_constants.dart';
 import 'package:zero_type/core/di/injection.dart';
+import 'package:zero_type/core/theme/font_sizes.dart';
 import 'package:zero_type/features/log/log_controller.dart';
+
+/// 開啟紀錄檔所在的資料夾。
+/// notes: 開資料夾而不是開檔 —— .log 不一定有關聯的程式，開檔可能什麼都不會發生；
+///   資料夾一定開得起來，而且檔案還沒產生時也不會撲空。
+Future<void> _openDebugLogFolder() async {
+  final file = await LogController.logFile();
+  await launchUrl(Uri.file(file.parent.path),
+      mode: LaunchMode.externalApplication);
+}
 
 class LogPage extends ConsumerWidget {
   const LogPage({super.key});
@@ -13,6 +24,7 @@ class LogPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final entries = ref.watch(logControllerProvider);
     final cs = Theme.of(context).colorScheme;
+    final fontSizes = ref.watch(fontSizesProvider);
     final debugOn = appPrefs.getBool(AppConstants.debugLogKey) ?? false;
 
     return Column(
@@ -36,6 +48,13 @@ class LogPage extends ConsumerWidget {
                 style: TextStyle(fontSize: 16, color: cs.onSurfaceVariant),
               ),
               const Spacer(),
+              if (debugOn)
+                TextButton.icon(
+                  onPressed: _openDebugLogFolder,
+                  icon: const Icon(Icons.folder_open, size: 18),
+                  label: Text('紀錄檔位置',
+                      style: TextStyle(fontSize: fontSizes.itemTitle)),
+                ),
               TextButton.icon(
                 // 偵錯模式開著時一律可按：重開 app 後記憶體是空的，但 debug.log
                 // 還在，停用按鈕就沒有任何地方能把它清掉了。
@@ -43,7 +62,8 @@ class LogPage extends ConsumerWidget {
                     ? null
                     : () => ref.read(logControllerProvider.notifier).clear(),
                 icon: const Icon(Icons.delete_outline, size: 18),
-                label: const Text('清空'),
+                label: Text('清空',
+                    style: TextStyle(fontSize: fontSizes.itemTitle)),
               ),
             ],
           ),

@@ -24,6 +24,9 @@ class HistoryRepository {
     return File('${dir.path}/$_statsFileName');
   }
 
+  /// 音檔資料夾。歷史頁的「開啟目錄」用，所有錄音都在同一個地方。
+  Future<Directory> audioDir() => _audioDir();
+
   Future<Directory> _audioDir() async {
     final dir = await _appSupportDir();
     final audioDir = Directory('${dir.path}/$_audioDirName');
