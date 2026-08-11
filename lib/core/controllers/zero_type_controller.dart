@@ -440,12 +440,20 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
 
       print('[ZeroType] Simulating paste...');
       const channel = MethodChannel('com.zerotype.app/keyboard');
+      // notes: VS 內建終端機收不到注入的按鍵，精簡模式在那裡不會自動送出 —— 那個
+      // 控制項的 wndproc 對鍵盤訊息一律不理。曾試過把換行併進剪貼簿讓貼上自帶
+      // Enter，可行但使用者不要，別再加回來。
       final autoEnter = _quickMode &&
           (appPrefs.getBool(AppConstants.quickAutoEnterKey) ?? true);
       final pasted = await channel
           .invokeMethod<bool>('simulatePaste', {'pressEnter': autoEnter});
+      // 貼上之後才問，這樣 focus= 拿到的是按鍵真正送達那一刻的狀態
+      final target =
+          await channel.invokeMethod<String>('describePasteTarget') ?? '(未知)';
+      _log.debug('貼上目標：$target');
       if (pasted == false) {
-        _log.error('焦點切不回原本的視窗，沒有貼上；文字已複製到剪貼簿');
+        _log.error('沒貼上（焦點切不回原本的視窗，或按熱鍵時焦點在 ZeroType 自己'
+            '身上）；文字已複製到剪貼簿');
       }
 
       _log.info('文字：${result.text}');

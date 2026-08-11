@@ -26,6 +26,10 @@ class AppConstants {
 
   /// 精簡模式貼上後要不要自動按 Enter 送出（預設要）
   static const String quickAutoEnterKey = 'quick_auto_enter';
+
+  /// 偵錯模式：紀錄一併寫到 [debugLogFileName]，並多記貼上目標之類的細節
+  static const String debugLogKey = 'debug_log';
+  static const String debugLogFileName = 'debug.log';
   static const String fontSizesKey = 'font_sizes_json';
 
   static const String githubRepoUrl = 'https://github.com/DaveTseng2019/ZeroType';

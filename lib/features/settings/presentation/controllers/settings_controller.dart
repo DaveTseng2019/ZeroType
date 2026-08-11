@@ -55,6 +55,7 @@ class SettingsController extends AsyncNotifier<SettingsState> {
         quickHotkey: hotkeyService.quickHotkey,
         quickAutoEnter:
             prefs.getBool(AppConstants.quickAutoEnterKey) ?? true,
+        debugLog: prefs.getBool(AppConstants.debugLogKey) ?? false,
         isAccessibilityAuthorized: isAccessibilityAuthorized,
         isMicrophoneAuthorized: isMicrophoneAuthorized,
         soundEnabled: soundEnabled,
@@ -200,6 +201,14 @@ class SettingsController extends AsyncNotifier<SettingsState> {
     final currentState = state.value;
     if (currentState != null) {
       state = AsyncData(currentState.copyWith(quickAutoEnter: value));
+    }
+  }
+
+  Future<void> toggleDebugLog(bool value) async {
+    await appPrefs.setBool(AppConstants.debugLogKey, value);
+    final currentState = state.value;
+    if (currentState != null) {
+      state = AsyncData(currentState.copyWith(debugLog: value));
     }
   }
 

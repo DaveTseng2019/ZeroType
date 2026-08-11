@@ -9,6 +9,7 @@
 
 #include <atomic>
 #include <memory>
+#include <string>
 #include <variant>
 
 // Keep channels alive for the duration of the app
@@ -79,15 +80,41 @@ static void PauseMedia() {
 // 就會貼到錯的地方 —— 文字還在剪貼簿與歷史裡，但沒有進到使用者要的欄位。
 static HWND g_paste_target = nullptr;
 
+// 目標視窗裡當時正在打字的那個子控制項。頂層視窗不夠 —— 見 RestoreInnerFocus。
+static HWND g_paste_focus = nullptr;
+
 // 記下目前的前景視窗當作貼上目標。ZeroType 自己不能當目標，否則從自己的
 // 視窗觸發錄音時會把文字貼進自己；這種情況保留上一次記到的視窗。
 static void RememberPasteTarget() {
   HWND hwnd = GetForegroundWindow();
   if (!hwnd) return;
   DWORD pid = 0;
-  GetWindowThreadProcessId(hwnd, &pid);
+  DWORD tid = GetWindowThreadProcessId(hwnd, &pid);
   if (pid == GetCurrentProcessId()) return;
   g_paste_target = hwnd;
+
+  GUITHREADINFO gui = {};
+  gui.cbSize = sizeof(gui);
+  g_paste_focus = GetGUIThreadInfo(tid, &gui) ? gui.hwndFocus : nullptr;
+}
+
+// 把焦點放回熱鍵按下那一刻的子控制項。
+//
+// SetForegroundWindow 會還原視窗內部的焦點，但還原到哪由那個程式自己決定，不保證是
+// 使用者剛剛在打字的地方 —— EmEditor 實測會落在 EmEditorMenuBar，Ctrl+V 就打進選單列
+// 而不是編輯區。所以不能只靠它，要拿記到的子控制項補一次。
+//
+// notes: 補的是「記到的子控制項」，不是 target 本身。對頂層視窗 SetFocus 會把鍵盤焦點
+// 從編輯子視窗搶走，那是更早踩過的坑。跨執行緒 SetFocus 一定要先 AttachThreadInput。
+static void RestoreInnerFocus(HWND target) {
+  HWND want = g_paste_focus;
+  if (!want || !IsWindow(want)) return;
+  DWORD self = GetCurrentThreadId();
+  DWORD tid = GetWindowThreadProcessId(target, nullptr);
+  if (tid == self) return;
+  if (!AttachThreadInput(self, tid, TRUE)) return;
+  if (GetFocus() != want) SetFocus(want);
+  AttachThreadInput(self, tid, FALSE);
 }
 
 // 把焦點切回目標視窗。切成功（或本來就沒有目標可切）回 true。
@@ -97,9 +124,15 @@ static void RememberPasteTarget() {
 // 用，target 此刻正好就不是前景。
 static bool FocusPasteTarget() {
   HWND target = g_paste_target;
-  if (!target || !IsWindow(target)) return true;  // 沒目標：照舊貼給目前前景
+  // 沒目標＝按熱鍵那一刻焦點在 ZeroType 自己身上，而且還沒記過任何視窗（剛開好的
+  // 行程）。這時盲貼給當下的前景視窗只會打進不相干的地方，寧可不貼 —— 文字還在
+  // 剪貼簿跟歷史紀錄裡，呼叫端會記一筆錯誤。
+  if (!target || !IsWindow(target)) return false;
   HWND fg = GetForegroundWindow();
-  if (fg == target) return true;  // 焦點沒跑掉，不必動
+  if (fg == target) {
+    RestoreInnerFocus(target);  // 視窗沒跑掉，但內部焦點可能跑了
+    return true;
+  }
 
   // notes: 只做 SetForegroundWindow，不要再 SetFocus(target) —— target 是頂層
   // 視窗，附掛狀態下對它 SetFocus 會把鍵盤焦點從編輯子視窗搶走，Ctrl+V 就打進
@@ -123,9 +156,82 @@ static bool FocusPasteTarget() {
   // 這裡是 UI 執行緒，但此刻畫面停在「已完成」，這點延遲看不出來。
   for (int i = 0; i < 12; ++i) {
     Sleep(25);
-    if (GetForegroundWindow() == target) return true;
+    if (GetForegroundWindow() == target) {
+      RestoreInnerFocus(target);
+      return true;
+    }
   }
   return false;
+}
+
+static std::string Utf8(const wchar_t* s) {
+  if (!s || !*s) return {};
+  int n = WideCharToMultiByte(CP_UTF8, 0, s, -1, nullptr, 0, nullptr, nullptr);
+  if (n <= 1) return {};
+  std::string out(static_cast<size_t>(n - 1), '\0');
+  WideCharToMultiByte(CP_UTF8, 0, s, -1, out.data(), n, nullptr, nullptr);
+  return out;
+}
+
+// 目標視窗內部真正有鍵盤焦點的子控制項。
+//
+// hwndFocus 只涵蓋 target 自己那條 UI 執行緒。焦點若落在別條執行緒或別的行程
+// （WebView2 之類的宿主控制項就是這樣），這裡會拿到 nullptr —— 那件事本身就是線索。
+static HWND FocusedChildOfTarget() {
+  HWND target = g_paste_target;
+  if (!target || !IsWindow(target)) return nullptr;
+  GUITHREADINFO gui = {};
+  gui.cbSize = sizeof(gui);
+  if (!GetGUIThreadInfo(GetWindowThreadProcessId(target, nullptr), &gui)) {
+    return nullptr;
+  }
+  return gui.hwndFocus;
+}
+
+static bool IsClass(HWND hwnd, const wchar_t* name) {
+  if (!hwnd) return false;
+  wchar_t cls[64] = {};
+  GetClassNameW(hwnd, cls, 64);
+  return wcscmp(cls, name) == 0;
+}
+
+// 上一次貼上走的是哪條路，給日誌用
+static const char* g_last_route = "(還沒貼過)";
+
+// 診斷用：貼上目標到底是誰。
+//
+// focus= 那一欄才是重點：像 Visual Studio 這種多面板的程式，頂層視窗永遠是同一個
+// devenv，真正收到按鍵的是哪個子控制項（終端機分頁還是程式碼編輯器）決定了成敗。
+// 貼上失敗時光有頂層視窗的標題看不出差別。
+static std::string DescribePasteTarget() {
+  HWND target = g_paste_target;
+  if (!target) return "(沒記到目標，貼給當下的前景視窗)";
+  if (!IsWindow(target)) return "(記到的視窗已經關掉了)";
+
+  wchar_t title[160] = {};
+  wchar_t cls[128] = {};
+  GetWindowTextW(target, title, 160);
+  GetClassNameW(target, cls, 128);
+
+  DWORD pid = 0;
+  GetWindowThreadProcessId(target, &pid);
+
+  std::string focus = "(不在同一條 UI 執行緒)";
+  if (HWND child = FocusedChildOfTarget()) {
+    wchar_t focus_cls[128] = {};
+    GetClassNameW(child, focus_cls, 128);
+    char buf[64] = {};
+    sprintf_s(buf, "0x%p ", reinterpret_cast<void*>(child));
+    focus = std::string(buf) + Utf8(focus_cls);
+  }
+
+  // 記到的焦點 vs 實際焦點：兩者不一樣就是 RestoreInnerFocus 沒把焦點救回來
+  char head[128] = {};
+  sprintf_s(head, "hwnd=0x%p pid=%lu 記到的焦點=0x%p ",
+            reinterpret_cast<void*>(target), pid,
+            reinterpret_cast<void*>(g_paste_focus));
+  return std::string(head) + "cls=" + Utf8(cls) + " title=\"" + Utf8(title) +
+         "\" focus=" + focus + " 走法=" + g_last_route;
 }
 
 // Simulates Ctrl+V (Windows paste shortcut) using Win32 SendInput.
@@ -134,40 +240,61 @@ static bool FocusPasteTarget() {
 static bool SimulatePaste(bool press_enter) {
   if (!FocusPasteTarget()) return false;
 
-  INPUT inputs[6] = {};
+  // VS 內建終端機（Windows Terminal 的 HwndTerminal 宿主控制項）不吃注入的鍵盤
+  // 貼上。它的 wndproc 根本沒有 WM_KEYDOWN 分支，鍵盤要進去得靠宿主攔截後呼叫
+  // 匯出的 TerminalSendKeyEvent；貼上則只實作在 WM_RBUTTONDOWN 裡，直接讀
+  // CF_UNICODETEXT 寫進 pty（microsoft/terminal，src/cascadia/TerminalControl/
+  // HwndTerminal.cpp:184 與 :1127）。所以這裡補的是右鍵，跟使用者手動做的一模一樣，
+  // 不必去賭 VS 宿主怎麼路由鍵盤。
+  //
+  // notes: 控制項若正有選取範圍，右鍵是「複製」不是「貼上」（同一個 case 的前半段），
+  // 那時這次貼上會沒作用、且剪貼簿被選取內容蓋掉。手動右鍵本來就有同樣的行為，
+  // 文字也還在歷史紀錄裡。真的會踩到再處理。
+  HWND focus = FocusedChildOfTarget();
+  const bool vs_terminal = IsClass(focus, L"HwndTerminalClass");
+  if (vs_terminal) {
+    // 用 SendMessageTimeout 而不是 PostMessage：精簡模式接著要補 Enter，得先確定
+    // 貼上真的處理完了，不然 Enter 會搶在前面把空訊息送出去。ABORTIFHUNG 顧的是
+    // 對方沒回應時不要把我們的 UI 執行緒一起卡死。
+    DWORD_PTR unused = 0;
+    SendMessageTimeout(focus, WM_RBUTTONDOWN, MK_RBUTTON, 0, SMTO_ABORTIFHUNG,
+                       1000, &unused);
+    SendMessageTimeout(focus, WM_RBUTTONUP, 0, 0, SMTO_ABORTIFHUNG, 1000,
+                       &unused);
+  }
+  g_last_route = vs_terminal ? "右鍵（VS 終端機）" : "Ctrl+V";
 
-  // Key down: Ctrl
-  inputs[0].type = INPUT_KEYBOARD;
-  inputs[0].ki.wVk = VK_CONTROL;
+  INPUT inputs[8] = {};
+  UINT count = 0;
+  // wScan 一定要填。只給 wVk 的話，產生出來的 WM_KEYDOWN 其 lParam 裡 scan code
+  // 是 0；一般 Edit 控制項不在乎（它們吃 TranslateMessage 產出的 WM_CHAR），但
+  // 讀 scan code 的宿主控制項會整個忽略這個按鍵 —— VS 內建終端機的
+  // HwndTerminalClass 就是這樣，實測 Ctrl+Shift+V 送得出去卻毫無反應。
+  // 真實鍵盤本來就同時帶 vk 和 scan code，這裡只是照做。
+  auto key = [&](WORD vk, DWORD flags) {
+    inputs[count].type = INPUT_KEYBOARD;
+    inputs[count].ki.wVk = vk;
+    inputs[count].ki.wScan =
+        static_cast<WORD>(MapVirtualKeyW(vk, MAPVK_VK_TO_VSC));
+    inputs[count].ki.dwFlags = flags;
+    ++count;
+  };
 
-  // Key down: V
-  inputs[1].type = INPUT_KEYBOARD;
-  inputs[1].ki.wVk = 'V';
+  if (!vs_terminal) {
+    key(VK_CONTROL, 0);
+    key('V', 0);
+    key('V', KEYEVENTF_KEYUP);
+    key(VK_CONTROL, KEYEVENTF_KEYUP);
+  }
 
-  // Key up: V
-  inputs[2].type = INPUT_KEYBOARD;
-  inputs[2].ki.wVk = 'V';
-  inputs[2].ki.dwFlags = KEYEVENTF_KEYUP;
-
-  // Key up: Ctrl
-  inputs[3].type = INPUT_KEYBOARD;
-  inputs[3].ki.wVk = VK_CONTROL;
-  inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
-
-  UINT count = 4;
   if (press_enter) {
     // 跟 Ctrl+V 同一批送出，中間不留空隙 —— 分兩次 SendInput 的話，Enter 可能
     // 趕在目標視窗處理完貼上之前抵達，送出去的就是一則空訊息。
-    inputs[4].type = INPUT_KEYBOARD;
-    inputs[4].ki.wVk = VK_RETURN;
-
-    inputs[5].type = INPUT_KEYBOARD;
-    inputs[5].ki.wVk = VK_RETURN;
-    inputs[5].ki.dwFlags = KEYEVENTF_KEYUP;
-    count = 6;
+    key(VK_RETURN, 0);
+    key(VK_RETURN, KEYEVENTF_KEYUP);
   }
 
-  SendInput(count, inputs, sizeof(INPUT));
+  if (count) SendInput(count, inputs, sizeof(INPUT));
   return true;
 }
 
@@ -214,6 +341,8 @@ void SetupChannels(flutter::BinaryMessenger* messenger) {
             }
           }
           result->Success(flutter::EncodableValue(SimulatePaste(press_enter)));
+        } else if (call.method_name() == "describePasteTarget") {
+          result->Success(flutter::EncodableValue(DescribePasteTarget()));
         } else if (call.method_name() == "rememberPasteTarget") {
           RememberPasteTarget();
           result->Success(nullptr);

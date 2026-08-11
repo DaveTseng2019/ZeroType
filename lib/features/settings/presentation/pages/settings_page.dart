@@ -13,7 +13,17 @@ import 'package:zero_type/core/services/sound_service.dart';
 import 'package:zero_type/core/theme/font_sizes.dart';
 import 'package:zero_type/core/theme/theme_controller.dart';
 import 'package:zero_type/core/utils/version_compare.dart';
+import 'package:zero_type/features/log/log_controller.dart';
 import '../controllers/settings_controller.dart';
+
+/// 開啟紀錄檔所在的資料夾。
+/// notes: 開資料夾而不是開檔 —— .log 不一定有關聯的程式，開檔可能什麼都不會發生；
+///   資料夾一定開得起來，而且檔案還沒產生時也不會撲空。
+Future<void> _openDebugLogFolder() async {
+  final file = await LogController.logFile();
+  await launchUrl(Uri.file(file.parent.path),
+      mode: LaunchMode.externalApplication);
+}
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -360,6 +370,40 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                             ],
                           ),
                         ),
+                      ),
+                      loading: () => const _LoadingTile(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    // Debug Log
+                    settings.when(
+                      data: (data) => Column(
+                        children: [
+                          _SettingTile(
+                            icon: Icons.bug_report_outlined,
+                            title: '偵錯模式',
+                            subtitle: '紀錄一併寫到 debug.log，並多記貼上目標等細節；'
+                                '平常關著，追問題時才開。清除歷史紀錄時會一併刪掉',
+                            trailing: Switch(
+                              value: data.debugLog,
+                              onChanged: (val) => ref
+                                  .read(settingsControllerProvider.notifier)
+                                  .toggleDebugLog(val),
+                            ),
+                          ),
+                          if (data.debugLog) ...[
+                            const Divider(height: 1, indent: 56),
+                            _SettingTile(
+                              icon: Icons.folder_open,
+                              title: '紀錄檔位置',
+                              subtitle: '開啟 debug.log 所在的資料夾',
+                              trailing: OutlinedButton(
+                                onPressed: _openDebugLogFolder,
+                                child: const Text('開啟'),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                       loading: () => const _LoadingTile(),
                       error: (_, __) => const SizedBox.shrink(),

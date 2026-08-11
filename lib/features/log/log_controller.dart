@@ -1,4 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:zero_type/core/constants/app_constants.dart';
+import 'package:zero_type/core/di/injection.dart';
 
 enum LogLevel { info, error }
 
@@ -29,10 +34,49 @@ class LogController extends Notifier<List<LogEntry>> {
 
   void error(String message) => _add(LogLevel.error, message);
 
-  void clear() => state = const [];
+  /// 只有偵錯模式開著才記的訊息（貼上目標之類）。平常不顯示 —— 這些細節只在
+  /// 追問題時有意義，一直印在畫面上只會把真正要看的訊息擠掉。
+  void debug(String message) {
+    if (_debugOn) _add(LogLevel.info, message);
+  }
+
+  /// 清空紀錄，連落地的檔案一起刪 —— 清歷史紀錄時會走這裡，
+  /// 講過的話不該只清掉畫面上那份而留在磁碟上。
+  void clear() {
+    state = const [];
+    _tail = _tail.then((_) async {
+      final file = await logFile();
+      if (file.existsSync()) await file.delete();
+    }).catchError((_) {});
+  }
 
   void _add(LogLevel level, String message) {
-    final next = [LogEntry(DateTime.now(), level, message), ...state];
+    final entry = LogEntry(DateTime.now(), level, message);
+    final next = [entry, ...state];
     state = next.length > _maxEntries ? next.sublist(0, _maxEntries) : next;
+    if (_debugOn) _appendToFile(entry);
+  }
+
+  static bool get _debugOn =>
+      appPrefs.getBool(AppConstants.debugLogKey) ?? false;
+
+  static Future<File>? _file;
+
+  /// 偵錯紀錄檔。設定頁要拿它來開檔，所以是公開的。
+  static Future<File> logFile() => _file ??= getApplicationSupportDirectory()
+      .then((d) => File('${d.path}/${AppConstants.debugLogFileName}'));
+
+  // 寫檔串成一條鏈：_add 是同步的、可能連續呼叫，各自 await 會讓內容交錯。
+  // notes: 只附加不輪替，偵錯模式是臨時開的、開著也只有錄音時才寫；真的長到礙事
+  //   再加大小上限。寫檔失敗一律吞掉 —— 記錄本身不該把主流程弄倒。
+  static Future<void> _tail = Future.value();
+
+  static void _appendToFile(LogEntry entry) {
+    final line = '${entry.at.toIso8601String()} [${entry.level.name}] '
+        '${entry.message}\n';
+    _tail = _tail.then((_) async {
+      final file = await logFile();
+      await file.writeAsString(line, mode: FileMode.append);
+    }).catchError((_) {});
   }
 }

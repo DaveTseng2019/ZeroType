@@ -16,6 +16,7 @@ class SettingsState {
     this.isRecordingHotkey = false,
     this.isEditingQuickHotkey = false,
     this.quickAutoEnter = true,
+    this.debugLog = false,
     this.soundEnabled = true,
     this.startSound = kDefaultStartSound,
     this.stopSound = kDefaultStopSound,
@@ -45,6 +46,9 @@ class SettingsState {
 
   /// 精簡模式貼上後要不要自動按 Enter 送出
   final bool quickAutoEnter;
+
+  /// 偵錯模式：紀錄一併寫到檔案，並多記貼上目標之類的細節
+  final bool debugLog;
   final bool soundEnabled;
   final String startSound;
   final String stopSound;
@@ -79,6 +83,7 @@ class SettingsState {
     bool? isRecordingHotkey,
     bool? isEditingQuickHotkey,
     bool? quickAutoEnter,
+    bool? debugLog,
     bool? soundEnabled,
     String? startSound,
     String? stopSound,
@@ -105,6 +110,7 @@ class SettingsState {
       isEditingQuickHotkey:
           isEditingQuickHotkey ?? this.isEditingQuickHotkey,
       quickAutoEnter: quickAutoEnter ?? this.quickAutoEnter,
+      debugLog: debugLog ?? this.debugLog,
       soundEnabled: soundEnabled ?? this.soundEnabled,
       startSound: startSound ?? this.startSound,
       stopSound: stopSound ?? this.stopSound,

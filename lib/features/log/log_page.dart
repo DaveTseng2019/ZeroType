@@ -2,6 +2,8 @@ import 'dart:ui' show FontFeature;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:zero_type/core/constants/app_constants.dart';
+import 'package:zero_type/core/di/injection.dart';
 import 'package:zero_type/features/log/log_controller.dart';
 
 class LogPage extends ConsumerWidget {
@@ -11,6 +13,7 @@ class LogPage extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final entries = ref.watch(logControllerProvider);
     final cs = Theme.of(context).colorScheme;
+    final debugOn = appPrefs.getBool(AppConstants.debugLogKey) ?? false;
 
     return Column(
       children: [
@@ -27,12 +30,16 @@ class LogPage extends ConsumerWidget {
               ),
               const SizedBox(width: 12),
               Text(
-                '${entries.length} 筆，只留在記憶體',
+                debugOn
+                    ? '${entries.length} 筆，偵錯模式開著，另外寫進 debug.log'
+                    : '${entries.length} 筆，只留在記憶體',
                 style: TextStyle(fontSize: 16, color: cs.onSurfaceVariant),
               ),
               const Spacer(),
               TextButton.icon(
-                onPressed: entries.isEmpty
+                // 偵錯模式開著時一律可按：重開 app 後記憶體是空的，但 debug.log
+                // 還在，停用按鈕就沒有任何地方能把它清掉了。
+                onPressed: entries.isEmpty && !debugOn
                     ? null
                     : () => ref.read(logControllerProvider.notifier).clear(),
                 icon: const Icon(Icons.delete_outline, size: 18),
