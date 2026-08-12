@@ -195,9 +195,6 @@ static bool IsClass(HWND hwnd, const wchar_t* name) {
   return wcscmp(cls, name) == 0;
 }
 
-// 上一次貼上走的是哪條路，給日誌用
-static const char* g_last_route = "(還沒貼過)";
-
 // 診斷用：貼上目標到底是誰。
 //
 // focus= 那一欄才是重點：像 Visual Studio 這種多面板的程式，頂層視窗永遠是同一個
@@ -231,7 +228,7 @@ static std::string DescribePasteTarget() {
             reinterpret_cast<void*>(target), pid,
             reinterpret_cast<void*>(g_paste_focus));
   return std::string(head) + "cls=" + Utf8(cls) + " title=\"" + Utf8(title) +
-         "\" focus=" + focus + " 走法=" + g_last_route;
+         "\" focus=" + focus;
 }
 
 // Simulates Ctrl+V (Windows paste shortcut) using Win32 SendInput.
@@ -262,7 +259,6 @@ static bool SimulatePaste(bool press_enter) {
     SendMessageTimeout(focus, WM_RBUTTONUP, 0, 0, SMTO_ABORTIFHUNG, 1000,
                        &unused);
   }
-  g_last_route = vs_terminal ? "右鍵（VS 終端機）" : "Ctrl+V";
 
   INPUT inputs[8] = {};
   UINT count = 0;

@@ -109,10 +109,18 @@ const double kSilentChunkRms = 20;
 /// 拉到 100 是使用者要求的保守值，用來擋掉更明確的低品質音訊，
 /// 不是這起幻覺案例的修法。
 ///
+/// 2026-08-12 依使用者校正調到 150 —— 100 是「極安靜」，不是「有聲音」。
+///
+/// notes: 150 擋不住實際踩到的案例。同日安靜房間、預設麥克風、完全不出聲錄
+/// 2.4 秒，未加增益的音框 RMS 最高 178；08-12 09:45 那筆吐出 podcast 開場白的
+/// 幻覺錄音最高 365。[hasAnySound] 取的是「任何一個音框」，一次器物碰撞就過關，
+/// 要擋住這類錄音門檻得拉到 500 以上，那又開始有吃掉小聲人聲的風險。
+/// 真要修這條路得換判別方式（音框 RMS 的動態範圍），不是繼續往上加門檻。
+///
 /// 用來決定 onCaptureStart（提示音）何時觸發：沒開等待時，第一個超過此門檻的
 /// chunk 就代表麥克風真的活了。也是 [hasAnySound] 判斥「整段都沒訊號」的門檻。
 /// 不拿來當就緒判斷 —— 見 [MicReadyGate.accept]。
-const double kDeadChunkRms = 100.0;
+const double kDeadChunkRms = 150.0;
 
 /// 要連續多久不靜音才算麥克風真的活了。
 ///
@@ -185,6 +193,57 @@ bool hasAnySound(Uint8List pcm, {int sampleRate = kRecordSampleRate}) {
   return false;
 }
 
+/// 人聲該有的動態範圍下限：音框 RMS 的 p90 ÷ p10。
+///
+/// 2026-08-12 實測 13 筆真實錄音（同一支麥克風、同一個房間）：正常說話 8 筆
+/// 落在 6.2~11.6，只有噪音的 5 筆落在 1.4~2.9。4 落在中間，兩邊各有兩倍餘裕。
+const double kMinDynamicRange = 4.0;
+
+/// 短於這個長度就不做動態範圍判斷 —— 音框太少時百分位不穩，寧可送出去。
+const Duration kDynamicsMinLength = Duration(seconds: 1);
+
+/// [pcm] 有沒有人聲該有的高低起伏。
+///
+/// 講話一定有停頓，最安靜的音框會落回底噪，p90 跟 p10 因此拉得很開；只有底噪的
+/// 錄音則是一條平的線。用比值而不是絕對音量有兩個好處：
+///
+/// 1. 同一段錄音自己跟自己比，[applyGain] 的倍率、麥克風本身音量大小都會約掉，
+///    不必為每支麥克風校正。絕對門檻（[kDeadChunkRms]）做不到這件事 ——
+///    實測純噪音錄音的最大音框 RMS 落在 178~365，跟小聲的人聲根本分不開。
+/// 2. 敲擊聲騙不過去：它推高 p90，但沒人講話時 p10 還是貼在底噪上。
+///    實測有器物碰撞的那筆噪音錄音仍然只有 2.9。
+///
+/// notes: 會失效的是「吵雜環境講話」—— 底噪把 p10 頂高，比值掉下來，真的講話
+/// 可能被誤擋。目前樣本只有 13 筆、單一麥克風單一環境。誤擋時調降
+/// [kMinDynamicRange]，紀錄頁的訊息會指名是這條擋的。
+///
+/// notes: 百分位只取非零音框。錄音開頭那 200ms 是數位零（麥克風還沒送資料），
+/// 短錄音時它們會佔到一成以上，把 p10 壓成 0，比值就變成無限大、形同關閉。
+bool hasSpeechDynamics(Uint8List pcm, {int sampleRate = kRecordSampleRate}) {
+  final frameSamples = sampleRate * _kFrameMs ~/ 1000;
+  final frameCount = pcm.lengthInBytes ~/ 2 ~/ frameSamples;
+  if (frameCount * _kFrameMs < kDynamicsMinLength.inMilliseconds) return true;
+
+  final bd = ByteData.sublistView(pcm);
+  final rms = <double>[];
+  for (var f = 0; f < frameCount; f++) {
+    var sum = 0.0;
+    final start = f * frameSamples;
+    for (var i = start; i < start + frameSamples; i++) {
+      final s = bd.getInt16(i * 2, Endian.little);
+      sum += s * s.toDouble();
+    }
+    final v = sqrt(sum / frameSamples);
+    if (v > 0) rms.add(v);
+  }
+  if (rms.length < 10) return true;
+
+  rms.sort();
+  final p10 = rms[rms.length ~/ 10];
+  final p90 = rms[rms.length * 9 ~/ 10];
+  return p10 <= 0 || p90 / p10 >= kMinDynamicRange;
+}
+
 /// 精簡模式判定「有人在講話」的振幅門檻。振幅是 [_emitAmplitude] 正規化過的
 /// 0~1（-50 dBFS → 0，-5 dBFS → 1），0.15 約等於 -43 dBFS。
 ///
@@ -195,26 +254,46 @@ const double kSpeechAmplitude = 0.15;
 /// 精簡模式要連續安靜多久才算「講完了」
 const Duration kQuietHold = Duration(milliseconds: 1500);
 
-/// 精簡模式的自動停止判斷：開口過，而且已經安靜滿 [hold]。
+/// 要連續多久超過門檻才算「真的開口了」。
+///
+/// 只看單一取樣有跨過門檻是不夠的：小聲的麥克風（藍牙耳機實測峰值只有滿刻度的
+/// 6%）底噪本來就在門檻上下跳，使用者還沒開口就會有一兩框衝過去。那之後只要
+/// 安靜滿 [kQuietHold]，錄音就在他開口前被收掉，送出去的是兩秒環境噪音 ——
+/// 模型對這種音訊必定憑空編一整段出來（2026-08-12 實測，編出一段 podcast 開場白）。
+///
+/// notes: 取樣是每 100ms 一次，300ms 等於要連續 4 框。單字短句（「好。」）
+/// 可能撐不到而不會自動停，那時退回按熱鍵停止；反過來早停會整段話丟失又貼上
+/// 幻覺文字，代價大得多。
+const Duration kMinSpeech = Duration(milliseconds: 300);
+
+/// 精簡模式的自動停止判斷：真的開口過，而且已經安靜滿 [hold]。
 ///
 /// 「開口過」是必要條件 —— 沒有它的話，使用者按下熱鍵後還沒開口的那段安靜
 /// 就會直接把錄音收掉。抽成類別純粹是為了能測（同 [MicReadyGate]）。
 class QuietGate {
-  QuietGate({this.threshold = kSpeechAmplitude, this.hold = kQuietHold});
+  QuietGate({
+    this.threshold = kSpeechAmplitude,
+    this.hold = kQuietHold,
+    this.minSpeech = kMinSpeech,
+  });
 
   final double threshold;
   final Duration hold;
+  final Duration minSpeech;
 
   bool _heardSpeech = false;
+  DateTime? _loudSince;
   DateTime? _quietSince;
 
   /// 回 true 代表可以停止錄音了
   bool accept(double amplitude, DateTime now) {
     if (amplitude >= threshold) {
-      _heardSpeech = true;
+      _loudSince ??= now;
+      if (now.difference(_loudSince!) >= minSpeech) _heardSpeech = true;
       _quietSince = null;
       return false;
     }
+    _loudSince = null; // 斷了就重算，底噪的零星跨越湊不成一次開口
     if (!_heardSpeech) return false;
     _quietSince ??= now;
     return now.difference(_quietSince!) >= hold;
@@ -365,6 +444,10 @@ class RecordingService {
   double _noiseGateStrength = 0;
   DateTime _lastAmplitudeAt = DateTime.fromMillisecondsSinceEpoch(0);
 
+  /// [stopRecording] 回 null 的原因，給呼叫端寫進紀錄頁。
+  /// 「麥克風沒送資料」跟「只錄到噪音」是兩回事，訊息一樣的話問題查不下去。
+  String? lastDiscardReason;
+
   Future<bool> checkPermission() async {
     return _recorder.hasPermission();
   }
@@ -509,10 +592,12 @@ class RecordingService {
       }
     }
 
+    lastDiscardReason = null;
     final pcm = _pcm?.takeBytes() ?? Uint8List(0);
     _pcm = null;
     if (pcm.isEmpty || _currentFilePath == null) {
       print('[RecordingService] no audio captured');
+      lastDiscardReason = '麥克風沒有送出任何資料';
       return null;
     }
 
@@ -523,6 +608,16 @@ class RecordingService {
     // 整段都是數位靜音就不要送辨識 —— 模型會憑空編一段出來（見 [hasAnySound]）
     if (!hasAnySound(processed)) {
       print('[RecordingService] silence only, discarding ${pcm.length} bytes');
+      lastDiscardReason = '整段沒有任何聲音訊號';
+      return null;
+    }
+
+    // 有聲音但沒有人聲的高低起伏（見 [hasSpeechDynamics]）—— 送出去只會換回
+    // 一段憑空編的內容，還要付錢
+    if (!hasSpeechDynamics(processed)) {
+      print('[RecordingService] flat dynamics, discarding ${pcm.length} bytes');
+      lastDiscardReason = '只錄到底噪，聽不出人聲的高低起伏'
+          '（動態範圍低於 $kMinDynamicRange）';
       return null;
     }
 

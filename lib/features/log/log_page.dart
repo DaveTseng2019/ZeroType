@@ -117,12 +117,6 @@ class _LogRow extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 12),
-          Icon(
-            isError ? Icons.error_outline : Icons.info_outline,
-            size: 16,
-            color: isError ? cs.error : cs.onSurfaceVariant,
-          ),
-          const SizedBox(width: 8),
           Expanded(
             child: SelectableText(
               entry.message,

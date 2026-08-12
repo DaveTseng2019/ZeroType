@@ -95,14 +95,66 @@ void main() {
         hasAnySound(pcmFrames([...List.filled(49, 0), 500])),
         isTrue,
       );
-      // 高於 kDeadChunkRms(100) 才算有聲音
-      expect(hasAnySound(pcmFrames(List.filled(10, 120))), isTrue);
+      // 高於 kDeadChunkRms(150) 才算有聲音
+      expect(hasAnySound(pcmFrames(List.filled(10, 180))), isTrue);
     });
 
-    test('低於 kDeadChunkRms(100) 的音框不算有聲音', () {
+    test('低於 kDeadChunkRms(150) 的音框不算有聲音', () {
       // 2026-08-04 實測：幻覺案例(avg 204/max 3485)跟辨識正確案例(avg 176/max 1872)
       // 幾乎同量級，這個門檻攔不住那組真實案例，只是使用者要求的保守值。
       expect(hasAnySound(pcmFrames(List.filled(10, 90))), isFalse);
+      // 2026-08-12 使用者校正：100 只是「極安靜」，140 這種底噪不該算有聲音
+      expect(hasAnySound(pcmFrames(List.filled(10, 140))), isFalse);
+    });
+  });
+
+  // 絕對音量分不出「小聲的人聲」跟「底噪」（實測純噪音錄音的最大音框 RMS
+  // 落在 178~365），改看高低起伏。數字取自 2026-08-12 的 13 筆真實錄音：
+  // 正常說話 6.2~11.6，只有噪音 1.4~2.9。
+  group('hasSpeechDynamics', () {
+    test('講話有停頓，p90/p10 拉得開 —— 送出', () {
+      // 底噪 900、人聲 5600，比值 6.2，等於實測說話組的最低值
+      expect(
+        hasSpeechDynamics(pcmFrames([
+          ...List.filled(40, 900),
+          ...List.filled(60, 5600),
+        ])),
+        isTrue,
+      );
+    });
+
+    test('只有底噪是一條平的線 —— 不送', () {
+      final flat = [for (var i = 0; i < 100; i++) 800 + (i % 4) * 100];
+      expect(hasSpeechDynamics(pcmFrames(flat)), isFalse);
+    });
+
+    // 這是絕對門檻擋不住、動態範圍擋得住的那種：敲一下桌子就有音框衝到
+    // kDeadChunkRms 的幾十倍，但沒人講話時 p10 還是貼在底噪上。
+    test('零星的器物碰撞聲不算人聲 —— 不送', () {
+      expect(
+        hasSpeechDynamics(pcmFrames([
+          ...List.filled(195, 900),
+          ...List.filled(5, 12000), // 敲擊，佔比不到 3%
+        ])),
+        isFalse,
+      );
+    });
+
+    // 開頭那 200ms 是數位零（麥克風還沒送資料）。把它算進百分位的話 p10 會是 0，
+    // 比值變成無限大，這道檢查等於沒開。
+    test('開頭的數位零不算進百分位', () {
+      expect(
+        hasSpeechDynamics(pcmFrames([
+          ...List.filled(12, 0),
+          ...List.filled(88, 900),
+        ])),
+        isFalse,
+      );
+    });
+
+    test('太短就不判斷，寧可送出去', () {
+      // 0.8 秒的平底噪：音框太少，百分位不穩，不擋
+      expect(hasSpeechDynamics(pcmFrames(List.filled(40, 900))), isTrue);
     });
   });
 
@@ -296,16 +348,20 @@ void main() {
 
     test('開口後連續安靜滿 hold 才停', () {
       final gate = QuietGate(hold: const Duration(milliseconds: 1500));
-      expect(gate.accept(0.5, at(0)), isFalse); // 講話中
-      expect(gate.accept(0.0, at(100)), isFalse);
-      expect(gate.accept(0.0, at(1500)), isFalse); // 安靜 1400ms，還差一點
-      expect(gate.accept(0.0, at(1600)), isTrue); // 安靜滿 1500ms
+      for (var ms = 0; ms <= 300; ms += 100) {
+        expect(gate.accept(0.5, at(ms)), isFalse); // 講話中
+      }
+      expect(gate.accept(0.0, at(400)), isFalse);
+      expect(gate.accept(0.0, at(1800)), isFalse); // 安靜 1400ms，還差一點
+      expect(gate.accept(0.0, at(1900)), isTrue); // 安靜滿 1500ms
     });
 
     test('句中停頓會重新計時，不會把一句話切成兩半', () {
       final gate = QuietGate(hold: const Duration(milliseconds: 1500));
-      gate.accept(0.5, at(0));
-      expect(gate.accept(0.0, at(1000)), isFalse); // 停頓 1000ms
+      for (var ms = 0; ms <= 300; ms += 100) {
+        gate.accept(0.5, at(ms));
+      }
+      expect(gate.accept(0.0, at(1000)), isFalse); // 停頓 700ms
       expect(gate.accept(0.5, at(1100)), isFalse); // 又開口，計時歸零
       expect(gate.accept(0.0, at(2000)), isFalse); // 從 2000 重新算
       expect(gate.accept(0.0, at(2500)), isFalse);
@@ -313,9 +369,31 @@ void main() {
     });
 
     test('門檻以下的底噪算安靜，門檻本身算講話', () {
-      final gate = QuietGate(threshold: 0.15, hold: Duration.zero);
+      final gate = QuietGate(
+        threshold: 0.15,
+        hold: Duration.zero,
+        minSpeech: Duration.zero,
+      );
       expect(gate.accept(0.15, at(0)), isFalse); // 等於門檻 = 有講話
       expect(gate.accept(0.14, at(1)), isTrue); // 低於門檻 = 安靜
+    });
+
+    // 2026-08-12 09:45:00 那筆的真實包絡（換算成振幅）：底噪在 0.15 上下跳，
+    // 最長只連跨 2 框。舊版被這種噪音騙到就開始倒數，2.5 秒後把還沒開口的錄音
+    // 收掉送出去，模型編了一整段 podcast 開場白回來。
+    test('底噪零星跨過門檻不算開口，不會在使用者開口前收掉錄音', () {
+      final gate = QuietGate();
+      const noise = [
+        0.078, 0.123, 0.167, 0.181, 0.104, //
+        0.124, 0.202, 0.132, 0.102, 0.046,
+      ];
+      for (var i = 0; i < noise.length; i++) {
+        expect(gate.accept(noise[i], at(i * 100)), isFalse, reason: 'i=$i');
+      }
+      // 後面再安靜多久都不該停 —— 使用者根本還沒講話
+      for (var ms = 1000; ms <= 10000; ms += 100) {
+        expect(gate.accept(0.0, at(ms)), isFalse, reason: 'ms=$ms');
+      }
     });
   });
 }

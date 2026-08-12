@@ -383,9 +383,10 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
         return;
       }
       if (filePath == null) {
-        // 整段都是靜音（見 hasAnySound），或麥克風根本沒送出資料。
-        // 要講出來，不然使用者只會看到什麼都沒發生，還以為熱鍵壞了。
-        _log.error('沒有錄到聲音，這次沒有送出辨識');
+        // 沒訊號、只有底噪，或麥克風根本沒送出資料。要講出來，不然使用者
+        // 只會看到什麼都沒發生，還以為熱鍵壞了；也要講是哪一種，才查得下去。
+        _log.error('這次沒有送出辨識：'
+            '${_recordingService.lastDiscardReason ?? "沒有錄到聲音"}');
         state = const ZeroTypeState();
         await _hideNativeOverlay();
         return;
@@ -456,7 +457,7 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
             '身上）；文字已複製到剪貼簿');
       }
 
-      _log.info('文字：${result.text}');
+      _log.info(result.text);
       state = const ZeroTypeState();
       await _hideNativeOverlay();
     } catch (e, st) {
