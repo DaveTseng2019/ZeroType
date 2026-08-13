@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:zero_type/core/di/injection.dart';
+import 'package:zero_type/core/services/sound_service.dart';
 import 'package:zero_type/features/history/entities/history_stats.dart';
 import 'package:zero_type/features/history/entities/transcription_record.dart';
 import 'package:zero_type/features/log/log_controller.dart';
@@ -39,6 +40,7 @@ final historyControllerProvider =
 
 class HistoryController extends AsyncNotifier<List<TranscriptionRecord>> {
   Process? _macProcess; // macOS afplay
+  Timer? _winTimer; // Windows PlaySoundW 播完的計時器
 
   @override
   Future<List<TranscriptionRecord>> build() async {
@@ -50,6 +52,12 @@ class HistoryController extends AsyncNotifier<List<TranscriptionRecord>> {
   void _killProcess() {
     _macProcess?.kill();
     _macProcess = null;
+    // 只在自己播過時才停 —— PlaySoundW 是全域單軌，無條件停會打斷正在播的提示音
+    if (_winTimer != null) {
+      _winTimer!.cancel();
+      _winTimer = null;
+      SoundService.stopWavFile();
+    }
   }
 
   void _stopPlayback() {
@@ -83,13 +91,19 @@ class HistoryController extends AsyncNotifier<List<TranscriptionRecord>> {
         _macProcess = null;
       });
     } else if (Platform.isWindows) {
-      // On Windows, open with default media player (no background control)
-      // audioplayers integration can be added here if needed
-      await Process.run('powershell', [
-        '-Command',
-        'Start-Process "$audioPath"',
-      ]);
-      ref.read(playingRecordIdProvider.notifier).set(null);
+      // 跟提示音效走同一條 PlaySoundW，不外開預設播放器
+      final duration = SoundService.playWavFile(audioPath);
+      if (duration == null) {
+        // 不是 WAV 或讀不到長度，播不了也不知道何時結束 —— 直接復原按鈕狀態
+        ref.read(playingRecordIdProvider.notifier).set(null);
+        return;
+      }
+      _winTimer = Timer(duration, () {
+        _winTimer = null;
+        if (ref.read(playingRecordIdProvider) == record.id) {
+          ref.read(playingRecordIdProvider.notifier).set(null);
+        }
+      });
     }
   }
 

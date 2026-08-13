@@ -81,11 +81,14 @@ const String kDefaultCancelSound = '/System/Library/Sounds/Basso.aiff';
 const String kDefaultRecordingStoppedSound = '/System/Library/Sounds/Tink.aiff';
 
 /// Windows 內建語音提示音（對應 macOS 預設音效）
+///
+/// 「錄音結束」配 Speech Off、「辨識完成」配 Notify —— 麥克風開關用同一組
+/// Speech On/Off 才成對，文字好了是另一回事，用通知音。
 const Map<String, String> kWindowsSounds = {
   kDefaultStartSound: r'C:\Windows\Media\Speech On.wav',
-  kDefaultStopSound: r'C:\Windows\Media\Speech Off.wav',
+  kDefaultStopSound: r'C:\Windows\Media\Windows Notify.wav',
   kDefaultCancelSound: r'C:\Windows\Media\Speech Misrecognition.wav',
-  kDefaultRecordingStoppedSound: r'C:\Windows\Media\Windows Notify.wav',
+  kDefaultRecordingStoppedSound: r'C:\Windows\Media\Speech Off.wav',
 };
 
 const Map<String, String> kWindowsSoundLabels = {
@@ -226,6 +229,27 @@ class SoundService {
       _playWindows(wavPath);
       if (i < repeats - 1) await Future.delayed(duration!);
     }
+  }
+
+  /// 播放歷史紀錄的錄音檔（Windows）。跟音效走同一條 PlaySoundW，不外開播放器，
+  /// 也不套用 [kMinSoundDuration] 的重播。回傳音檔長度讓呼叫端知道何時播完，
+  /// 解析不出長度回 null。
+  static Duration? playWavFile(String path) {
+    if (!Platform.isWindows) return null;
+    Duration? duration;
+    try {
+      duration = wavDuration(File(path).readAsBytesSync());
+    } catch (_) {
+      duration = null;
+    }
+    _playWindows(path);
+    return duration;
+  }
+
+  /// 停掉 PlaySoundW 正在播的東西（同一時間只有一個，音效與回放共用）。
+  static void stopWavFile() {
+    if (!Platform.isWindows) return;
+    _playSoundW(nullptr, 0, 0);
   }
 
   static final _playSoundW = DynamicLibrary.open('winmm.dll').lookupFunction<
