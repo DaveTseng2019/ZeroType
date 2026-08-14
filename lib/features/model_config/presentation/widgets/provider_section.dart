@@ -339,7 +339,7 @@ class _ProviderSectionState extends State<ProviderSection>
               suffixIcon: IconButton(
                 icon: Icon(
                   _obscureApiKey ? Icons.visibility_off : Icons.visibility,
-                  size: 18,
+                  size: 24,
                   color: colorScheme.onSurface.withAlpha(120),
                 ),
                 onPressed: () =>

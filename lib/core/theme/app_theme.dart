@@ -15,6 +15,9 @@ class AppTheme {
   static const _darkSurface = Color(0xFF121212);
   static const _darkOnSurface = Color(0xFFE0E0E0);
 
+  static const _buttonTextStyle =
+      TextStyle(fontSize: 16, fontWeight: FontWeight.w600);
+
   static ThemeData get lightTheme => _themeData(Brightness.light);
   static ThemeData get darkTheme => _themeData(Brightness.dark);
 
@@ -36,10 +39,12 @@ class AppTheme {
       useMaterial3: true,
       navigationRailTheme: NavigationRailThemeData(
         backgroundColor: isDark ? _darkSurface : _lightSurface,
-        selectedIconTheme: const IconThemeData(color: primaryOrange),
-        unselectedIconTheme: IconThemeData(
-          color: (isDark ? _darkOnSurface : _lightOnSurface).withOpacity(0.5),
-        ),
+        // 選中與未選中的圖示都用品牌橘、都放大到 28（Material 預設 24）。
+        // 兩者的區別交給實心／外框圖示與選取指示器，不靠顏色。
+        // 標籤文字仍然用顏色區分（見下方兩個 LabelTextStyle）。
+        selectedIconTheme: const IconThemeData(color: primaryOrange, size: 28),
+        unselectedIconTheme:
+            const IconThemeData(color: primaryOrange, size: 28),
         selectedLabelTextStyle: const TextStyle(
           color: primaryOrange,
           fontWeight: FontWeight.bold,
@@ -54,11 +59,26 @@ class AppTheme {
         thickness: 1,
         color: (isDark ? _darkOnSurface : _lightOnSurface).withOpacity(0.1),
       ),
+      // 三種按鈕的文字一律 16／w600。對話框的「取消」「確定」是 TextButton 配
+      // FilledButton，字級訂在主題才會一致 —— 各處自己寫 fontSize 遲早又走鐘。
       filledButtonTheme: FilledButtonThemeData(
         style: FilledButton.styleFrom(
           backgroundColor: primaryOrange,
           foregroundColor: Colors.white,
+          textStyle: _buttonTextStyle,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: primaryOrange,
+          textStyle: _buttonTextStyle,
+        ),
+      ),
+      outlinedButtonTheme: OutlinedButtonThemeData(
+        style: OutlinedButton.styleFrom(
+          foregroundColor: primaryOrange,
+          textStyle: _buttonTextStyle,
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(

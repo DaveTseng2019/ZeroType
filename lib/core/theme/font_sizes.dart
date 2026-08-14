@@ -41,7 +41,7 @@ class FontSizes {
     this.pageTitle = 24,
     this.sectionHeader = 22,
     this.itemTitle = 18,
-    this.description = 15,
+    this.description = 16,
   });
 
   /// 頁面標題（例如「設定」）

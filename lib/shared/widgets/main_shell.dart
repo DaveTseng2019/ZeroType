@@ -205,9 +205,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
                       ),
                     ),
                   ),
-                  selectedIconTheme: IconThemeData(
-                    color: Theme.of(context).colorScheme.primary,
-                  ),
+                  // 圖示的顏色與大小由 AppTheme 的 navigationRailTheme 決定
                   destinations: const [
                     NavigationRailDestination(
                       icon: Icon(Icons.settings_outlined),

@@ -492,10 +492,68 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                       error: (_, __) => const SizedBox.shrink(),
                     ),
                     const Divider(height: 1, indent: 56),
+                    settings.when(
+                      data: (data) => _SoundPickerTile(
+                        icon: Icons.error_outline,
+                        title: '貼上失敗音效',
+                        subtitle: '文字沒送進目標視窗時播放',
+                        selectedPath: data.pasteFailedSound,
+                        enabled: data.soundEnabled,
+                        slot: 3,
+                        onChanged: (path) => ref
+                            .read(settingsControllerProvider.notifier)
+                            .setPasteFailedSound(path),
+                      ),
+                      loading: () => const _LoadingTile(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    // 主音量下限（0 = 不干預系統音量）
+                    settings.when(
+                      data: (data) => _SettingTile(
+                        icon: Icons.volume_up,
+                        title: '提示音最小系統音量',
+                        subtitle: '主動提升提示音量，之後會還原，避免聽不到提示音',
+                        trailing: SizedBox(
+                          width: 200,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                width: 140,
+                                child: Slider(
+                                  value: data.minMasterVolumePercent
+                                      .clamp(0, 100)
+                                      .toDouble(),
+                                  max: 100,
+                                  divisions: 20,
+                                  onChanged: (val) => ref
+                                      .read(settingsControllerProvider.notifier)
+                                      .setMinMasterVolumePercent(val.round()),
+                                ),
+                              ),
+                              Text(
+                                data.minMasterVolumePercent <= 0
+                                    ? '關閉'
+                                    : '${data.minMasterVolumePercent}%',
+                                style: TextStyle(
+                                  fontSize: fontSizes.description,
+                                  fontWeight: FontWeight.w600,
+                                  color: Theme.of(context).colorScheme.primary,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      loading: () => const _LoadingTile(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
+                    const Divider(height: 1, indent: 56),
                     _SettingTile(
                       icon: Icons.settings_backup_restore,
                       title: '恢復預設音效',
-                      subtitle: '三個音效與開關都回到初始設定',
+                      subtitle: '四個音效、開關與最小系統音量都回到初始設定',
                       trailing: OutlinedButton(
                         onPressed: () {
                           final notifier =
@@ -505,6 +563,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                           notifier.setRecordingStoppedSound(
                               kDefaultRecordingStoppedSound);
                           notifier.setStopSound(kDefaultStopSound);
+                          notifier.setPasteFailedSound(
+                              kDefaultPasteFailedSound);
+                          notifier.setMinMasterVolumePercent(
+                              kDefaultMinMasterVolumePercent);
                         },
                         child: const Text('恢復'),
                       ),
@@ -1128,7 +1190,8 @@ class _SettingTile extends ConsumerWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center, // Ensure vertical center alignment
         children: [
-          Icon(icon, color: Theme.of(context).colorScheme.primary),
+          // 28 對齊左側導覽列的圖示大小（Material 預設是 24）
+          Icon(icon, color: Theme.of(context).colorScheme.primary, size: 28),
           const SizedBox(width: 16),
           Expanded(
             child: Column(
@@ -1183,7 +1246,7 @@ class _AppToggle extends StatelessWidget {
           alignment: Alignment.center,
           child: Icon(
             value ? activeIcon : inactiveIcon,
-            size: 20,
+            size: 28,
             color: value ? Colors.orangeAccent : Theme.of(context).colorScheme.primary,
           ),
         ),
@@ -1310,9 +1373,6 @@ class _UpdateCheckTileState extends State<_UpdateCheckTile> {
   }
 }
 
-/// 圖示上那個 Ø 的橘色
-const kBrandOrange = Color(0xFFEB5E14);
-
 class _InputDeviceTile extends ConsumerWidget {
   /// 空字串 = 系統預設
   final String selectedId;
@@ -1373,7 +1433,7 @@ class _InputDeviceTile extends ConsumerWidget {
                 style: TextStyle(
                   fontSize: labelSize,
                   fontWeight: FontWeight.w600,
-                  color: kBrandOrange,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
               ),
             );
@@ -1474,14 +1534,15 @@ class _SoundPickerTile extends ConsumerWidget {
               value: effectivePath,
               underline: const SizedBox.shrink(),
               borderRadius: BorderRadius.circular(12),
+              // 設定值一律用品牌橘 + w600，跟滑桿數值、裝置下拉一致
               selectedItemBuilder: (_) => kSystemSoundLabels.entries.map((e) {
                 return Center(
                   child: Text(
                     e.value,
                     style: TextStyle(
                       fontSize: labelSize,
-                      fontWeight: FontWeight.w500,
-                      color: cs.onSurface,
+                      fontWeight: FontWeight.w600,
+                      color: cs.primary,
                     ),
                   ),
                 );
@@ -1543,7 +1604,7 @@ class _PlayIconButton extends StatelessWidget {
             color: color.withOpacity(0.12),
             shape: BoxShape.circle,
           ),
-          child: Icon(icon, size: 24, color: color),
+          child: Icon(icon, size: 28, color: color),
         ),
       ),
     );

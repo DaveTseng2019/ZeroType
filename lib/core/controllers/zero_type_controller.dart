@@ -433,6 +433,11 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
 
       // Output
       state = state.copyWith(status: ZeroTypeStatus.done, result: result.text);
+      // 貼上是拿剪貼簿當中介，會蓋掉使用者原本複製的東西。這裡在覆蓋的前一刻
+      // 記下來，貼完再還原。取「覆蓋前」而不是「錄音前」—— 錄音那幾秒使用者
+      // 還是可能複製別的東西，要還原的是最近一次。
+      final savedClipboard =
+          (await Clipboard.getData(Clipboard.kTextPlain))?.text;
       await Clipboard.setData(ClipboardData(text: result.text));
       await Future.delayed(const Duration(milliseconds: 150));
 
@@ -455,6 +460,13 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       if (pasted == false) {
         _log.error('沒貼上（焦點切不回原本的視窗，或按熱鍵時焦點在 ZeroType 自己'
             '身上）；文字已複製到剪貼簿');
+        // 貼上失敗時畫面上什麼都不會發生，沒有聲音就只能等使用者自己發現
+        unawaited(soundService.playPasteFailedSound());
+      }
+
+      // 沒貼上時不還原 —— 那時剪貼簿裡的辨識結果是使用者唯一的救援手段
+      if (pasted == true && savedClipboard != null && savedClipboard.isNotEmpty) {
+        unawaited(_restoreClipboard(savedClipboard, result.text));
       }
 
       _log.info(result.text);
@@ -468,6 +480,23 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       state = const ZeroTypeState();
       await _hideNativeOverlay();
     }
+  }
+
+  /// 把剪貼簿還原成貼上前的 [saved]。
+  ///
+  /// notes: 只顧文字。Flutter 的 Clipboard 只讀得到 text/plain，原本放的是圖片或
+  /// 檔案就救不回來（那時 [saved] 是 null，我們乾脆不還原，把辨識結果留著）。
+  /// 要做到全格式得在 windows/runner 用 EnumClipboardFormats 逐格式複製一份。
+  ///
+  /// notes: 固定等 500ms。Ctrl+V 是 SendInput 送出去的，目標視窗什麼時候讀剪貼簿
+  /// 我們並不知道；還原得太早，貼進去的會是舊內容。慢的目標踩到就把這個值調大。
+  Future<void> _restoreClipboard(String saved, String pastedText) async {
+    await Future.delayed(const Duration(milliseconds: 500));
+    // 這 500ms 之間使用者自己複製了別的東西就別蓋掉他。
+    // VS 內建終端機「有選取範圍時右鍵是複製」那個情況也會落在這裡。
+    final current = (await Clipboard.getData(Clipboard.kTextPlain))?.text;
+    if (current != pastedText) return;
+    await Clipboard.setData(ClipboardData(text: saved));
   }
 
   Future<void> showOverlay(String status, String message) =>

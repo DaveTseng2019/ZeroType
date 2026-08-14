@@ -283,7 +283,7 @@ class _ApiKeyInputState extends State<_ApiKeyInput> {
                     borderSide: BorderSide(color: cs.onSurface.withAlpha(30)),
                   ),
                   suffixIcon: IconButton(
-                    icon: Icon(_obscureText ? Icons.visibility : Icons.visibility_off, size: 20),
+                    icon: Icon(_obscureText ? Icons.visibility : Icons.visibility_off, size: 24),
                     onPressed: () => setState(() => _obscureText = !_obscureText),
                   ),
                 ),

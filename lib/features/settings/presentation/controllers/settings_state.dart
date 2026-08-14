@@ -21,6 +21,8 @@ class SettingsState {
     this.startSound = kDefaultStartSound,
     this.stopSound = kDefaultStopSound,
     this.recordingStoppedSound = kDefaultRecordingStoppedSound,
+    this.pasteFailedSound = kDefaultPasteFailedSound,
+    this.minMasterVolumePercent = kDefaultMinMasterVolumePercent,
     this.historyRetentionDays = 7,
     this.maxRecordingMinutes = 1,
     this.inputDeviceId = '',
@@ -53,6 +55,12 @@ class SettingsState {
   final String startSound;
   final String stopSound;
   final String recordingStoppedSound;
+
+  /// 貼上沒送進去時播的音效
+  final String pasteFailedSound;
+
+  /// 提示音期間主音量的下限（百分比）；0 = 不干預系統音量
+  final int minMasterVolumePercent;
   final int historyRetentionDays;
   final int maxRecordingMinutes;
 
@@ -88,6 +96,8 @@ class SettingsState {
     String? startSound,
     String? stopSound,
     String? recordingStoppedSound,
+    String? pasteFailedSound,
+    int? minMasterVolumePercent,
     int? historyRetentionDays,
     int? maxRecordingMinutes,
     String? inputDeviceId,
@@ -115,6 +125,9 @@ class SettingsState {
       startSound: startSound ?? this.startSound,
       stopSound: stopSound ?? this.stopSound,
       recordingStoppedSound: recordingStoppedSound ?? this.recordingStoppedSound,
+      pasteFailedSound: pasteFailedSound ?? this.pasteFailedSound,
+      minMasterVolumePercent:
+          minMasterVolumePercent ?? this.minMasterVolumePercent,
       historyRetentionDays: historyRetentionDays ?? this.historyRetentionDays,
       maxRecordingMinutes: maxRecordingMinutes ?? this.maxRecordingMinutes,
       inputDeviceId: inputDeviceId ?? this.inputDeviceId,

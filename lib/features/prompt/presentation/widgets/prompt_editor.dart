@@ -99,7 +99,7 @@ class _PromptEditorState extends State<PromptEditor> {
                   ),
                 ),
                 TextButton.icon(
-                  icon: const Icon(Icons.refresh, size: 16),
+                  icon: const Icon(Icons.refresh, size: 24),
                   label: const Text('還原預設'),
                   onPressed: () async {
                     final newVal = await widget.onReset();
@@ -108,9 +108,6 @@ class _PromptEditorState extends State<PromptEditor> {
                       _controller.text = newVal;
                     });
                   },
-                  style: TextButton.styleFrom(
-                    foregroundColor: colorScheme.onSurface.withAlpha(150),
-                  ),
                 ),
               ],
             ),

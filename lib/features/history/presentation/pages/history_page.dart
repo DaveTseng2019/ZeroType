@@ -91,7 +91,7 @@ class _PageHeader extends StatelessWidget {
         TextButton.icon(
           onPressed: () =>
               ref.read(historyControllerProvider.notifier).openAudioFolder(),
-          icon: const Icon(Icons.folder_open_outlined, size: 20),
+          icon: const Icon(Icons.folder_open_outlined, size: 24),
           label: Text('開啟目錄',
               style: TextStyle(fontSize: ref.watch(fontSizesProvider).itemTitle)),
           style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
@@ -99,7 +99,7 @@ class _PageHeader extends StatelessWidget {
         if (records.isNotEmpty)
           TextButton.icon(
             onPressed: () => _confirmClearAll(context, ref),
-            icon: const Icon(Icons.delete_sweep_outlined, size: 20),
+            icon: const Icon(Icons.delete_sweep_outlined, size: 24),
             label: Text('全部清除',
                 style:
                     TextStyle(fontSize: ref.watch(fontSizesProvider).itemTitle)),
@@ -343,7 +343,6 @@ class _HistoryItemState extends ConsumerState<_HistoryItem> {
                   icon: isPlaying ? Icons.stop_rounded : Icons.play_arrow_rounded,
                   tooltip: isPlaying ? '停止' : '播放',
                   color: cs.primary,
-                  filled: true,
                   onTap: () => ref.read(historyControllerProvider.notifier).togglePlay(record),
                 ),
               _ActionIcon(
@@ -409,15 +408,12 @@ class _ActionIcon extends StatelessWidget {
     required this.tooltip,
     required this.onTap,
     this.color,
-    this.filled = false,
   });
 
   final IconData icon;
   final String tooltip;
   final VoidCallback onTap;
   final Color? color;
-  /// 播放鍵用：帶底色的圓形，讓它在一排動作圖示裡先被看到。
-  final bool filled;
 
   @override
   Widget build(BuildContext context) {
@@ -427,15 +423,20 @@ class _ActionIcon extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(20),
+        // 三顆都套同一個圓框。實心與線條圖示在同一個 size 下看起來就是不一樣大，
+        // 外框把佔位畫出來，眼睛才對得齊。框一律用品牌橘 —— 框是共通的容器，
+        // 三種顏色的框反而又變成不一致；圖示本身仍各自保留顏色語意。
         child: Container(
           padding: const EdgeInsets.all(8),
-          decoration: filled
-              ? BoxDecoration(
-                  color: iconColor.withOpacity(0.12),
-                  shape: BoxShape.circle,
-                )
-              : null,
-          child: Icon(icon, size: 20, color: iconColor),
+          // 三顆原本緊貼，加了框會黏成一條，補一點間距
+          margin: const EdgeInsets.symmetric(horizontal: 3),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: Theme.of(context).colorScheme.primary.withOpacity(0.35),
+            ),
+          ),
+          child: Icon(icon, size: 24, color: iconColor),
         ),
       ),
     );

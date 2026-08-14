@@ -62,6 +62,12 @@ class SettingsController extends AsyncNotifier<SettingsState> {
         startSound: startSound,
         stopSound: stopSound,
         recordingStoppedSound: recordingStoppedSound,
+        pasteFailedSound:
+            prefs.getString(AppConstants.pasteFailedSoundKey) ??
+                kDefaultPasteFailedSound,
+        minMasterVolumePercent:
+            prefs.getInt(AppConstants.minMasterVolumeKey) ??
+                kDefaultMinMasterVolumePercent,
         historyRetentionDays: historyRetentionDays,
         maxRecordingMinutes: maxRecordingMinutes,
         inputDeviceId: inputDeviceId,
@@ -244,6 +250,14 @@ class SettingsController extends AsyncNotifier<SettingsState> {
     }
   }
 
+  Future<void> setPasteFailedSound(String path) async {
+    await appPrefs.setString(AppConstants.pasteFailedSoundKey, path);
+    final currentState = state.value;
+    if (currentState != null) {
+      state = AsyncData(currentState.copyWith(pasteFailedSound: path));
+    }
+  }
+
   Future<void> setHistoryRetentionDays(int days) async {
     await appPrefs.setInt(AppConstants.historyRetentionDaysKey, days);
     final currentState = state.value;
@@ -288,6 +302,15 @@ class SettingsController extends AsyncNotifier<SettingsState> {
     final currentState = state.value;
     if (currentState != null) {
       state = AsyncData(currentState.copyWith(noiseGateStrength: strength));
+    }
+  }
+
+  Future<void> setMinMasterVolumePercent(int percent) async {
+    await appPrefs.setInt(AppConstants.minMasterVolumeKey, percent);
+    final currentState = state.value;
+    if (currentState != null) {
+      state = AsyncData(
+          currentState.copyWith(minMasterVolumePercent: percent));
     }
   }
 

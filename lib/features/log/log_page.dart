@@ -51,7 +51,7 @@ class LogPage extends ConsumerWidget {
               if (debugOn)
                 TextButton.icon(
                   onPressed: _openDebugLogFolder,
-                  icon: const Icon(Icons.folder_open, size: 18),
+                  icon: const Icon(Icons.folder_open, size: 24),
                   label: Text('紀錄檔位置',
                       style: TextStyle(fontSize: fontSizes.itemTitle)),
                 ),
@@ -61,7 +61,7 @@ class LogPage extends ConsumerWidget {
                 onPressed: entries.isEmpty && !debugOn
                     ? null
                     : () => ref.read(logControllerProvider.notifier).clear(),
-                icon: const Icon(Icons.delete_outline, size: 18),
+                icon: const Icon(Icons.delete_outline, size: 24),
                 label: Text('清空',
                     style: TextStyle(fontSize: fontSizes.itemTitle)),
               ),

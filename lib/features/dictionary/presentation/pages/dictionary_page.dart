@@ -174,7 +174,7 @@ class _DictionaryPageState extends ConsumerState<DictionaryPage> {
               icon: Icon(
                 Icons.delete_outline,
                 color: colorScheme.onSurface.withAlpha(120),
-                size: 20,
+                size: 24,
               ),
               onPressed: () => ref
                   .read(dictionaryControllerProvider.notifier)
