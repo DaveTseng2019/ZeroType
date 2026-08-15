@@ -2,10 +2,15 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:zero_type/core/constants/app_constants.dart';
 import 'package:zero_type/core/constants/model_pricing.dart';
+import 'package:zero_type/core/di/injection.dart';
 import 'package:zero_type/core/theme/font_sizes.dart';
 import 'package:zero_type/features/history/entities/history_stats.dart';
 import 'package:zero_type/features/history/entities/transcription_record.dart';
+import 'package:zero_type/features/phrases/phrase_controller.dart';
+import 'package:zero_type/features/settings/presentation/controllers/settings_controller.dart';
+import 'package:zero_type/shared/widgets/action_icon.dart';
 import '../controllers/history_controller.dart';
 
 class HistoryPage extends ConsumerStatefulWidget {
@@ -36,7 +41,9 @@ class _HistoryPageState extends ConsumerState<HistoryPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     _PageHeader(records: records, ref: ref),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 16),
+                    _RetentionRow(),
+                    const SizedBox(height: 20),
                     if (records.isEmpty)
                       const _EmptyState()
                     else
@@ -133,6 +140,57 @@ class _PageHeader extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+// ---------------------------------------------------------------------------
+// 保留天數：設定放在它影響的東西旁邊，不放設定頁
+// ---------------------------------------------------------------------------
+
+class _RetentionRow extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cs = Theme.of(context).colorScheme;
+    // 設定值還在載入時先用 prefs 的同步值，避免這一行閃一下
+    final days = ref.watch(settingsControllerProvider).asData?.value
+            .historyRetentionDays ??
+        appPrefs.getInt(AppConstants.historyRetentionDaysKey) ??
+        7;
+
+    return Row(
+      children: [
+        Text(
+          '保留天數',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: cs.onSurface.withAlpha(150),
+                fontSize: 15,
+              ),
+        ),
+        const SizedBox(width: 12),
+        SegmentedButton<int>(
+          segments: const [
+            ButtonSegment(value: 7, label: Text('7天')),
+            ButtonSegment(value: 14, label: Text('14天')),
+            ButtonSegment(value: 30, label: Text('30天')),
+          ],
+          selected: {days},
+          onSelectionChanged: (selection) => ref
+              .read(settingsControllerProvider.notifier)
+              .setHistoryRetentionDays(selection.first),
+          style: const ButtonStyle(visualDensity: VisualDensity.compact),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            '最多 30 天，到期的記錄與音檔會在下次啟動時自動刪除',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: cs.onSurface.withAlpha(110),
+                  fontSize: 15,
+                ),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -339,21 +397,38 @@ class _HistoryItemState extends ConsumerState<_HistoryItem> {
             mainAxisSize: MainAxisSize.min,
             children: [
               if (hasAudio)
-                _ActionIcon(
+                ActionIcon(
                   icon: isPlaying ? Icons.stop_rounded : Icons.play_arrow_rounded,
                   tooltip: isPlaying ? '停止' : '播放',
                   color: cs.primary,
                   onTap: () => ref.read(historyControllerProvider.notifier).togglePlay(record),
                 ),
-              _ActionIcon(
+              ActionIcon(
                 icon: Icons.copy_outlined,
                 tooltip: '複製文字',
                 onTap: () => ref.read(historyControllerProvider.notifier).copyText(record.text),
               ),
-              _ActionIcon(
+              ActionIcon(
+                icon: Icons.bookmark_add_outlined,
+                tooltip: '加入常用詞彙',
+                onTap: () async {
+                  final added = await ref
+                      .read(phraseControllerProvider.notifier)
+                      .add(record.text);
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(added ? '已加入常用詞彙' : '常用詞彙裡已經有這一句'),
+                      duration: const Duration(seconds: 1),
+                    ),
+                  );
+                },
+              ),
+              ActionIcon(
                 icon: Icons.delete_outline,
                 tooltip: '刪除',
-                color: Colors.red.withOpacity(0.7),
+                // 刪除用品牌橘，不用紅色
+                color: cs.primary,
                 onTap: () => ref.read(historyControllerProvider.notifier).deleteRecord(record.id),
               ),
             ],
@@ -398,47 +473,6 @@ class _TokenInfoRow extends StatelessWidget {
             color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
             fontSize: 16,
           ),
-    );
-  }
-}
-
-class _ActionIcon extends StatelessWidget {
-  const _ActionIcon({
-    required this.icon,
-    required this.tooltip,
-    required this.onTap,
-    this.color,
-  });
-
-  final IconData icon;
-  final String tooltip;
-  final VoidCallback onTap;
-  final Color? color;
-
-  @override
-  Widget build(BuildContext context) {
-    final iconColor = color ?? Theme.of(context).colorScheme.onSurface.withOpacity(0.55);
-    return Tooltip(
-      message: tooltip,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(20),
-        // 三顆都套同一個圓框。實心與線條圖示在同一個 size 下看起來就是不一樣大，
-        // 外框把佔位畫出來，眼睛才對得齊。框一律用品牌橘 —— 框是共通的容器，
-        // 三種顏色的框反而又變成不一致；圖示本身仍各自保留顏色語意。
-        child: Container(
-          padding: const EdgeInsets.all(8),
-          // 三顆原本緊貼，加了框會黏成一條，補一點間距
-          margin: const EdgeInsets.symmetric(horizontal: 3),
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: Theme.of(context).colorScheme.primary.withOpacity(0.35),
-            ),
-          ),
-          child: Icon(icon, size: 24, color: iconColor),
-        ),
-      ),
     );
   }
 }

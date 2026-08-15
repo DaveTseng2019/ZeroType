@@ -270,6 +270,18 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
           ? corrected
           : corrected.replaceFirst(RegExp(r'\s*_+$'), '');
 
+  /// 短句尾巴的句號拿掉：「好」「知道了」這種一兩個字的回覆，加了句號反而不像
+  /// 講出來的話。門檻是不含尾端句號的 5 個字。
+  ///
+  /// notes: 用程式砍不用提示詞——標點是規則檔一路要求的，為了短句去鬆綁那條規則
+  /// 會連長句一起失守。只處理句號（。與 .），問號驚嘆號是語氣，留著。
+  static String stripShortSentencePeriod(String text) {
+    final trimmed = text.trimRight();
+    final stripped = trimmed.replaceFirst(RegExp(r'[。.]+$'), '');
+    if (stripped.length == trimmed.length) return text; // 本來就沒有句號
+    return stripped.runes.length < 5 ? stripped : text;
+  }
+
   /// 第二段純文字處理：把使用者調過的格式規則原封不動搬過來，只加一句改寫框架，
   /// 讓它知道處理對象是文字而不是音檔。這裡有真實文字當輸入，範例就不再是
   /// 唯一可抄的東西了。
@@ -396,7 +408,15 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       await _showNativeOverlay('transcribing', '辨識中');
 
       final config = await ref.read(speechProviderControllerProvider.future);
-      final result = await _transcribe(filePath);
+      final raw = await _transcribe(filePath);
+      // 各家 provider 的路徑都收斂在這裡，短句去句號只做這一次
+      final result = raw == null
+          ? null
+          : (
+              text: stripShortSentencePeriod(raw.text),
+              inputTokens: raw.inputTokens,
+              outputTokens: raw.outputTokens,
+            );
 
       if (result == null || result.text.isEmpty) {
         // Cleanup temp file on empty result
@@ -461,7 +481,7 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
         _log.error('沒貼上（焦點切不回原本的視窗，或按熱鍵時焦點在 ZeroType 自己'
             '身上）；文字已複製到剪貼簿');
         // 貼上失敗時畫面上什麼都不會發生，沒有聲音就只能等使用者自己發現
-        unawaited(soundService.playPasteFailedSound());
+        unawaited(soundService.playFailedSound());
       }
 
       // 沒貼上時不還原 —— 那時剪貼簿裡的辨識結果是使用者唯一的救援手段
@@ -476,6 +496,9 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       print('[ZeroType] ERROR in _stopAndProcess: $e\n$st');
       if (!ref.mounted || _cancelled) return;
       _log.error('處理失敗：$e');
+      // 辨識／API 失敗（API Key 錯誤、額度、斷網）畫面上只有紀錄頁看得到，
+      // 沒有聲音使用者會一直等一段永遠不會出現的文字
+      unawaited(soundService.playFailedSound());
       await soundService.resumeMusic();
       state = const ZeroTypeState();
       await _hideNativeOverlay();

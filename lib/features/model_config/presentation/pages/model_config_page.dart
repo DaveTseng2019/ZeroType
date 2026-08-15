@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:zero_type/core/constants/model_pricing.dart';
+import 'package:zero_type/core/di/injection.dart';
 import '../controllers/model_config_controller.dart';
 import '../../entities/ai_provider.dart';
 
@@ -138,7 +142,23 @@ class _SpeechConfigSection extends ConsumerWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('選擇 Provider', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+            Row(
+              children: [
+                const Text('選擇 Provider', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+                if (selectedProvider.url != null) ...[
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: () => launchUrl(
+                      Uri.parse(selectedProvider.url!),
+                      mode: LaunchMode.externalApplication,
+                    ),
+                    icon: const Icon(Icons.open_in_new, size: 16),
+                    label: Text('${selectedProvider.name} 官方網站'),
+                    style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                  ),
+                ],
+              ],
+            ),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
@@ -206,7 +226,7 @@ class _SpeechConfigSection extends ConsumerWidget {
 }
 
 
-class _ApiKeyInput extends StatefulWidget {
+class _ApiKeyInput extends ConsumerStatefulWidget {
   const _ApiKeyInput({
     required this.providerId,
     required this.initialValue,
@@ -218,12 +238,13 @@ class _ApiKeyInput extends StatefulWidget {
   final Function(String) onSave;
 
   @override
-  State<_ApiKeyInput> createState() => _ApiKeyInputState();
+  ConsumerState<_ApiKeyInput> createState() => _ApiKeyInputState();
 }
 
-class _ApiKeyInputState extends State<_ApiKeyInput> {
+class _ApiKeyInputState extends ConsumerState<_ApiKeyInput> {
   late final TextEditingController _controller;
   bool _obscureText = true;
+  bool _testing = false;
 
   @override
   void initState() {
@@ -308,9 +329,86 @@ class _ApiKeyInputState extends State<_ApiKeyInput> {
               ),
               child: const Text('儲存'),
             ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              onPressed: _testing ? null : _test,
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
+              ),
+              child: _testing
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('測試'),
+            ),
           ],
         ),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton.icon(
+            onPressed: _confirmClear,
+            icon: const Icon(Icons.delete_outline, size: 18),
+            label: const Text('清除這個 Provider 的 API Key'),
+            style: TextButton.styleFrom(foregroundColor: cs.error),
+          ),
+        ),
       ],
+    );
+  }
+
+  /// 打各家最便宜的 GET 驗證金鑰，不送音訊、不耗 token
+  Future<void> _test() async {
+    setState(() => _testing = true);
+    final error = await ref
+        .read(speechProviderControllerProvider.notifier)
+        .testApiKey(_controller.text);
+    if (!mounted) return;
+    setState(() => _testing = false);
+    // 測試結果用聲音也講一次：成功＝辨識完成音效，失敗＝失敗音效，跟實際辨識時聽到的一致
+    unawaited(error == null
+        ? soundService.playStopSound()
+        : soundService.playFailedSound());
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(error ?? 'API Key 可用'),
+        backgroundColor: error == null ? null : Theme.of(context).colorScheme.error,
+        duration: Duration(seconds: error == null ? 2 : 5),
+      ),
+    );
+  }
+
+  Future<void> _confirmClear() async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('清除 API Key'),
+        content: Text('確定要刪除 ${widget.providerId} 已儲存的 API Key 嗎？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(ctx).colorScheme.error,
+            ),
+            child: const Text('清除'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true || !mounted) return;
+    await ref.read(speechProviderControllerProvider.notifier).clearApiKey();
+    if (!mounted) return;
+    _controller.clear();
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('API Key 已清除'), duration: Duration(seconds: 1)),
     );
   }
 }

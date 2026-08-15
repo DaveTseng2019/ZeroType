@@ -67,6 +67,24 @@ class SpeechProviderController extends AsyncNotifier<SpeechProviderConfig> {
     }
   }
 
+  Future<void> clearApiKey() async {
+    final state = await future;
+    if (state.providerId != null) {
+      await _repo.removeSpeechApiKey(state.providerId!);
+      ref.invalidateSelf();
+    }
+  }
+
+  /// 測試目前 provider 的 API Key：成功回 null，失敗回原因
+  Future<String?> testApiKey(String apiKey) async {
+    final state = await future;
+    if (state.providerId == null) return '尚未選擇 Provider';
+    return speechService.testApiKey(
+      provider: state.providerId!,
+      apiKey: apiKey.trim(),
+    );
+  }
+
   Future<void> saveCustomEndpoint(String endpoint) async {
     final state = await future;
     if (state.providerId != null) {

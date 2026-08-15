@@ -355,4 +355,51 @@ class SpeechRecognitionService {
         throw Exception('不支援文字校正的服務商：$provider');
     }
   }
+
+  /// 驗證 API Key：成功回 null，失敗回可讀的原因。
+  ///
+  /// notes: 打各家最便宜的 GET（列模型／查金鑰），不送音訊也不耗 token。
+  ///        自建接口不驗——那條路徑的位址與認證方式都不在我們手上。
+  Future<String?> testApiKey({
+    required String provider,
+    required String apiKey,
+  }) async {
+    if (apiKey.isEmpty) return '尚未填入 API Key';
+    final (url, headers) = switch (provider) {
+      'openai' => (
+          'https://api.openai.com/v1/models',
+          {'Authorization': 'Bearer $apiKey'},
+        ),
+      // Gemini 的金鑰走 query string，錯的 key 回 400 API_KEY_INVALID
+      'gemini' => (
+          'https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey',
+          <String, String>{},
+        ),
+      // OpenRouter 的 /models 是公開的，驗不出金鑰；/key 才會回 401
+      'openrouter' => (
+          'https://openrouter.ai/api/v1/key',
+          {'Authorization': 'Bearer $apiKey'},
+        ),
+      _ => ('', <String, String>{}),
+    };
+    if (url.isEmpty) return '不支援測試的服務商：$provider';
+
+    try {
+      await _dio.get<dynamic>(url, options: Options(headers: headers));
+      return null;
+    } on DioException catch (e) {
+      final code = e.response?.statusCode;
+      final detail = e.response?.data is Map
+          ? (e.response!.data['error']?['message'] as String?)
+          : null;
+      return switch (code) {
+        400 || 401 || 403 => 'API Key 無效或沒有權限${detail == null ? '' : '：$detail'}',
+        429 => '額度或速率限制（429）${detail == null ? '' : '：$detail'}',
+        null => '連線失敗：${e.message}',
+        _ => '測試失敗（HTTP $code）${detail == null ? '' : '：$detail'}',
+      };
+    } catch (e) {
+      return '測試失敗：$e';
+    }
+  }
 }

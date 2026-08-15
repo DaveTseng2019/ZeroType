@@ -1,5 +1,8 @@
 const Map<String, ({double inputPerM, double outputPerM})> kModelPricing = {
+  // notes: gpt-transcribe（$0.0045/分鐘）與 whisper-1（$0.006/分鐘）是按時間計價，
+  //        沒有 token 單價，刻意不列——calculateCost 回 null，UI 就不顯示費用
   'gpt-4o-transcribe': (inputPerM: 2.5, outputPerM: 10.0),
+  'gpt-4o-mini-transcribe': (inputPerM: 1.25, outputPerM: 5.0),
   'gemini-2.5-flash': (inputPerM: 1.0, outputPerM: 2.5),
   'gemini-3-flash-preview': (inputPerM: 1.0, outputPerM: 2.5),
   // OpenRouter：inputPerM 採音訊 token 價格（pricing.audio）
@@ -25,7 +28,10 @@ const Map<String, String> kProviderNames = {
 };
 
 const Map<String, String> kModelNames = {
+  'gpt-transcribe': 'GPT Transcribe',
   'gpt-4o-transcribe': 'GPT-4o Transcribe',
+  'gpt-4o-mini-transcribe': 'GPT-4o Mini Transcribe',
+  'whisper-1': 'Whisper',
   'gemini-2.5-flash': 'Gemini 2.5 Flash',
   'gemini-3-flash-preview': 'Gemini 3 Flash Preview',
   'google/gemini-2.5-flash': 'Gemini 2.5 Flash',

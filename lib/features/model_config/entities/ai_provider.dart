@@ -23,11 +23,15 @@ class AiProvider {
     required this.id,
     required this.name,
     required this.models,
+    this.url,
   });
 
   final String id;
   final String name;
   final List<AiModel> models;
+
+  /// 官方網站（API Key 申請頁）
+  final String? url;
 }
 
 class ProvidersConfig {

@@ -220,9 +220,17 @@ const Duration kDynamicsMinLength = Duration(seconds: 1);
 /// notes: 百分位只取非零音框。錄音開頭那 200ms 是數位零（麥克風還沒送資料），
 /// 短錄音時它們會佔到一成以上，把 p10 壓成 0，比值就變成無限大、形同關閉。
 bool hasSpeechDynamics(Uint8List pcm, {int sampleRate = kRecordSampleRate}) {
+  final ratio = speechDynamicsRatio(pcm, sampleRate: sampleRate);
+  // 量不出來（太短、非零音框太少、p10 是 0）就放行，理由見 [speechDynamicsRatio]
+  return ratio == null || ratio >= kMinDynamicRange;
+}
+
+/// [pcm] 實測的動態範圍：非零音框 RMS 的 p90 ÷ p10。
+/// 音框太少或 p10 為 0 時量不出有意義的值，回 null（呼叫端一律當作放行）。
+double? speechDynamicsRatio(Uint8List pcm, {int sampleRate = kRecordSampleRate}) {
   final frameSamples = sampleRate * _kFrameMs ~/ 1000;
   final frameCount = pcm.lengthInBytes ~/ 2 ~/ frameSamples;
-  if (frameCount * _kFrameMs < kDynamicsMinLength.inMilliseconds) return true;
+  if (frameCount * _kFrameMs < kDynamicsMinLength.inMilliseconds) return null;
 
   final bd = ByteData.sublistView(pcm);
   final rms = <double>[];
@@ -236,12 +244,12 @@ bool hasSpeechDynamics(Uint8List pcm, {int sampleRate = kRecordSampleRate}) {
     final v = sqrt(sum / frameSamples);
     if (v > 0) rms.add(v);
   }
-  if (rms.length < 10) return true;
+  if (rms.length < 10) return null;
 
   rms.sort();
   final p10 = rms[rms.length ~/ 10];
   final p90 = rms[rms.length * 9 ~/ 10];
-  return p10 <= 0 || p90 / p10 >= kMinDynamicRange;
+  return p10 <= 0 ? null : p90 / p10;
 }
 
 /// 精簡模式判定「有人在講話」的振幅門檻。振幅是 [_emitAmplitude] 正規化過的
@@ -614,10 +622,13 @@ class RecordingService {
 
     // 有聲音但沒有人聲的高低起伏（見 [hasSpeechDynamics]）—— 送出去只會換回
     // 一段憑空編的內容，還要付錢
-    if (!hasSpeechDynamics(processed)) {
-      print('[RecordingService] flat dynamics, discarding ${pcm.length} bytes');
+    final dynamicRange = speechDynamicsRatio(processed);
+    if (dynamicRange != null && dynamicRange < kMinDynamicRange) {
+      print('[RecordingService] flat dynamics ($dynamicRange), '
+          'discarding ${pcm.length} bytes');
+      // 報實測值而不是門檻 —— 調 kMinDynamicRange 前要知道這次量到多少
       lastDiscardReason = '只錄到底噪，聽不出人聲的高低起伏'
-          '（動態範圍低於 $kMinDynamicRange）';
+          '（動態範圍 ${dynamicRange.toStringAsFixed(1)}）';
       return null;
     }
 

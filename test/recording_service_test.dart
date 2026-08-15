@@ -158,6 +158,23 @@ void main() {
     });
   });
 
+  // 紀錄頁的「沒有送出辨識」訊息要報實測值，不是報門檻，不然誤擋時
+  // 看不出這次到底量到多少、該把 kMinDynamicRange 調到哪。
+  group('speechDynamicsRatio', () {
+    test('量得出來時回實際比值', () {
+      final ratio = speechDynamicsRatio(pcmFrames([
+        ...List.filled(40, 900),
+        ...List.filled(60, 5600),
+      ]));
+      expect(ratio, isNotNull);
+      expect(ratio!, closeTo(5600 / 900, 0.01));
+    });
+
+    test('量不出來時回 null —— 太短，或非零音框不足', () {
+      expect(speechDynamicsRatio(pcmFrames(List.filled(40, 900))), isNull);
+    });
+  });
+
   group('MicReadyGate', () {
     final t0 = DateTime(2026, 7, 30, 10, 0, 0);
     final farDeadline = t0.add(const Duration(seconds: 30));

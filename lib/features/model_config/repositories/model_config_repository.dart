@@ -22,6 +22,7 @@ class ModelConfigRepository {
     AiProvider parseProvider(Map<String, dynamic> p) => AiProvider(
           id: p['id'] as String,
           name: p['name'] as String,
+          url: p['url'] as String?,
           models: _markRecommended((p['models'] as List)
               .map(
                 (m) => AiModel(
@@ -45,6 +46,7 @@ class ModelConfigRepository {
           providers[i] = AiProvider(
             id: providers[i].id,
             name: providers[i].name,
+            url: providers[i].url,
             models: openRouterModels,
           );
         }
@@ -160,6 +162,9 @@ class ModelConfigRepository {
 
   Future<void> saveSpeechApiKey(String providerId, String apiKey) async =>
       _prefs.setString('api_key_speech_$providerId', apiKey);
+
+  Future<void> removeSpeechApiKey(String providerId) async =>
+      _prefs.remove('api_key_speech_$providerId');
 
   Future<String?> getCustomEndpoint(String providerId) async =>
       _prefs.getString('custom_endpoint_$providerId');

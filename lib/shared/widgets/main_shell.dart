@@ -13,6 +13,7 @@ import 'package:zero_type/features/settings/presentation/controllers/settings_co
 import 'package:zero_type/features/history/presentation/pages/history_page.dart';
 import 'package:zero_type/features/log/log_page.dart';
 import 'package:zero_type/features/model_config/presentation/pages/model_config_page.dart';
+import 'package:zero_type/features/phrases/phrase_page.dart';
 import 'package:zero_type/features/prompt/presentation/pages/prompt_page.dart';
 import 'package:zero_type/features/settings/presentation/pages/settings_page.dart';
 import 'package:zero_type/shared/widgets/recording_overlay.dart';
@@ -177,7 +178,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
                   backgroundColor: Theme.of(context).colorScheme.surface,
                   selectedIndex: _activeIndex,
                   onDestinationSelected: (index) {
-                    if (index == 4) {
+                    if (index == 5) {
                       ref.invalidate(historyControllerProvider);
                       ref.invalidate(historyStatsProvider);
                     }
@@ -228,6 +229,11 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
                       label: Text('字典檔'),
                     ),
                     NavigationRailDestination(
+                      icon: Icon(Icons.bookmarks_outlined),
+                      selectedIcon: Icon(Icons.bookmarks),
+                      label: Text('常用詞彙'),
+                    ),
+                    NavigationRailDestination(
                       icon: Icon(Icons.history_outlined),
                       selectedIcon: Icon(Icons.history),
                       label: Text('歷史'),
@@ -250,6 +256,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
                       ModelConfigPage(),
                       PromptPage(),
                       DictionaryPage(),
+                      PhrasePage(),
                       HistoryPage(),
                       LogPage(),
                     ],

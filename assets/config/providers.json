@@ -3,16 +3,30 @@
     {
       "id": "openai",
       "name": "OpenAI",
+      "url": "https://platform.openai.com/api-keys",
       "models": [
+        {
+          "id": "gpt-transcribe",
+          "name": "GPT Transcribe"
+        },
         {
           "id": "gpt-4o-transcribe",
           "name": "GPT-4o Transcribe"
+        },
+        {
+          "id": "gpt-4o-mini-transcribe",
+          "name": "GPT-4o Mini Transcribe"
+        },
+        {
+          "id": "whisper-1",
+          "name": "Whisper（舊版）"
         }
       ]
     },
     {
       "id": "gemini",
       "name": "Gemini",
+      "url": "https://aistudio.google.com/apikey",
       "models": [
         {
           "id": "gemini-3-flash-preview",
@@ -27,6 +41,7 @@
     {
       "id": "openrouter",
       "name": "OpenRouter",
+      "url": "https://openrouter.ai/keys",
       "models": [
         {
           "id": "google/gemini-3.6-flash",

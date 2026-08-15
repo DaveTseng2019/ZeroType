@@ -196,31 +196,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                       error: (_, __) => const SizedBox.shrink(),
                     ),
                     const Divider(height: 1, indent: 56),
-                    // History Retention Days
-                    settings.when(
-                      data: (data) => _SettingTile(
-                        icon: Icons.history,
-                        title: '歷史記錄保留時間',
-                        subtitle: '超過保留天數的記錄將自動刪除',
-                        trailing: SegmentedButton<int>(
-                          segments: const [
-                            ButtonSegment(value: 7, label: Text('7天')),
-                            ButtonSegment(value: 14, label: Text('14天')),
-                            ButtonSegment(value: 30, label: Text('30天')),
-                          ],
-                          selected: {data.historyRetentionDays},
-                          onSelectionChanged: (selection) => ref
-                              .read(settingsControllerProvider.notifier)
-                              .setHistoryRetentionDays(selection.first),
-                          style: const ButtonStyle(
-                            visualDensity: VisualDensity.compact,
-                          ),
-                        ),
-                      ),
-                      loading: () => const _LoadingTile(),
-                      error: (_, __) => const SizedBox.shrink(),
-                    ),
-                    const Divider(height: 1, indent: 56),
+                    // notes: 歷史記錄保留天數搬到歷史頁了 —— 那裡才看得到它影響的東西
                     // Max Recording Duration
                     settings.when(
                       data: (data) => _SettingTile(
@@ -495,8 +471,8 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                     settings.when(
                       data: (data) => _SoundPickerTile(
                         icon: Icons.error_outline,
-                        title: '貼上失敗音效',
-                        subtitle: '文字沒送進目標視窗時播放',
+                        title: '失敗音效',
+                        subtitle: '辨識失敗（API Key 錯誤等）或文字沒送進目標視窗時播放',
                         selectedPath: data.pasteFailedSound,
                         enabled: data.soundEnabled,
                         slot: 3,

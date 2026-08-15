@@ -195,8 +195,9 @@ class SoundService {
     await _play(kDefaultCancelSound);
   }
 
-  /// 貼上沒送進去時播，預設是系統的「災難性失敗」。
-  Future<void> playPasteFailedSound() async {
+  /// 失敗時播，預設是系統的「災難性失敗」：貼上沒送進去，或辨識／API 呼叫失敗
+  /// （API Key 錯誤、額度用盡、斷網）。設定鍵沿用 paste_failed_sound，不動舊資料。
+  Future<void> playFailedSound() async {
     if (!soundEnabled) return;
     await _play(pasteFailedSoundPath);
   }

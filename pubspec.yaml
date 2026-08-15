@@ -2,7 +2,7 @@ name: zero_type
 description: "ZeroType - AI-powered voice transcription & refinement tool"
 publish_to: 'none'
 
-version: 1.0.20+1
+version: 1.0.21+1
 
 environment:
   sdk: ^3.11.0
