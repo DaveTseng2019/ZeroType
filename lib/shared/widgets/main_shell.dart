@@ -16,7 +16,6 @@ import 'package:zero_type/features/model_config/presentation/pages/model_config_
 import 'package:zero_type/features/phrases/phrase_page.dart';
 import 'package:zero_type/features/prompt/presentation/pages/prompt_page.dart';
 import 'package:zero_type/features/settings/presentation/pages/settings_page.dart';
-import 'package:zero_type/shared/widgets/recording_overlay.dart';
 
 class MainShellPage extends ConsumerStatefulWidget {
   const MainShellPage({super.key});
@@ -100,13 +99,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        _buildMain(),
-        const RecordingOverlay(),
-      ],
-    );
+    return _buildMain();
   }
 
   void _confirmQuit(BuildContext context) {

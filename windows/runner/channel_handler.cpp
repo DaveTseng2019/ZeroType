@@ -1,5 +1,7 @@
 #include "channel_handler.h"
 
+#include "overlay_window.h"
+
 #include <windows.h>
 #include <endpointvolume.h>
 #include <mmdeviceapi.h>
@@ -373,19 +375,46 @@ void SetupChannels(flutter::BinaryMessenger* messenger) {
         }
       });
 
-  // ── Overlay channel (stub) ──────────────────────────────────────────────
-  // On Windows, overlay is handled by the Flutter RecordingOverlay widget.
-  // These stubs prevent MissingPluginException on the Dart side.
+  // ── Overlay channel ─────────────────────────────────────────────────────
+  // 錄音提示畫在一個置頂的原生小視窗上（overlay_window.cpp），不是 Flutter
+  // widget —— 主視窗被蓋住或縮到系統匣時，widget 根本不在畫面上。
   g_overlay_channel =
       std::make_shared<flutter::MethodChannel<flutter::EncodableValue>>(
           messenger, "com.zerotype.app/overlay",
           &flutter::StandardMethodCodec::GetInstance());
 
+  OverlaySetCancelCallback([]() {
+    if (g_control_channel) {
+      g_control_channel->InvokeMethod(
+          "cancel", std::make_unique<flutter::EncodableValue>());
+    }
+  });
+
   g_overlay_channel->SetMethodCallHandler(
       [](const flutter::MethodCall<flutter::EncodableValue>& call,
          std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
              result) {
-        // Dart side already has try-catch; stubs are just a safety net
+        const auto* args = std::get_if<flutter::EncodableMap>(call.arguments());
+        auto arg = [args](const char* key) -> const flutter::EncodableValue* {
+          if (!args) return nullptr;
+          const auto it = args->find(flutter::EncodableValue(key));
+          return it == args->end() ? nullptr : &it->second;
+        };
+
+        if (call.method_name() == "show") {
+          const auto* status = arg("status");
+          const auto* message = arg("message");
+          OverlayShow(status ? std::get<std::string>(*status) : std::string(),
+                      message ? std::get<std::string>(*message) : std::string());
+        } else if (call.method_name() == "hide") {
+          OverlayHide();
+        } else if (call.method_name() == "updateAmplitude") {
+          if (const auto* amp = arg("amplitude")) {
+            if (const auto* value = std::get_if<double>(amp)) {
+              OverlaySetAmplitude(*value);
+            }
+          }
+        }
         result->Success(nullptr);
       });
 

@@ -62,7 +62,9 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
     final wasActive = stateOrNull?.isActive ?? false;
     final nowActive = value.isActive;
     super.state = value;
-    if (was != now) unawaited(trayService.setRecording(now));
+    if (was != now) {
+      unawaited(trayService.setRecording(now, quick: value.quick));
+    }
     if (wasActive != nowActive) {
       const controlChannel = MethodChannel('com.zerotype.app/control');
       unawaited(controlChannel
@@ -173,6 +175,7 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
     final warming = warmupTimeout > Duration.zero;
     state = state.copyWith(
       status: warming ? ZeroTypeStatus.warmingUp : ZeroTypeStatus.recording,
+      quick: quick,
       amplitude: 0.0,
     );
     if (warming) {
@@ -184,7 +187,8 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
     // [優化3] overlay 顯示與錄音初始化同步進行
     try {
       await Future.wait([
-        _showNativeOverlay('recording', warming ? '準備中' : '錄音中'),
+        _showNativeOverlay(
+            'recording', '${warming ? '準備中' : '錄音中'}${_modeLabel(quick)}'),
         _recordingService.startRecording(
           deviceId: appPrefs
               .getString(AppConstants.inputDeviceIdKey),
@@ -198,7 +202,8 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
             if (state.status != ZeroTypeStatus.warmingUp) return;
             state = state.copyWith(status: ZeroTypeStatus.recording);
             _beginRecording();
-            unawaited(_showNativeOverlay('recording', '錄音中'));
+            unawaited(
+                _showNativeOverlay('recording', '錄音中${_modeLabel(quick)}'));
           },
           onAmplitude: (amp) {
             if (!ref.mounted || _cancelled) return;
@@ -521,6 +526,9 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
     if (current != pastedText) return;
     await Clipboard.setData(ClipboardData(text: saved));
   }
+
+  /// 熱鍵按下後要讓使用者看得出走的是哪一條路。
+  static String _modeLabel(bool quick) => quick ? '（精簡）' : '（全局）';
 
   Future<void> showOverlay(String status, String message) =>
       _showNativeOverlay(status, message);

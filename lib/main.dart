@@ -18,7 +18,6 @@ import 'core/state/zero_type_state.dart';
 import 'core/theme/app_theme.dart';
 import 'core/theme/theme_controller.dart';
 import 'shared/widgets/main_shell.dart';
-import 'shared/widgets/recording_overlay.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -90,12 +89,7 @@ class ZeroTypeApp extends ConsumerWidget {
         data: MediaQuery.of(context)
             .copyWith(textScaler: const TextScaler.linear(1.15)),
         child: _AppInitializer(
-          child: Stack(
-            children: [
-              child ?? const SizedBox.shrink(),
-              const RecordingOverlay(),
-            ],
-          ),
+          child: child ?? const SizedBox.shrink(),
         ),
       ),
     );

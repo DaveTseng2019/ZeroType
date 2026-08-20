@@ -25,13 +25,16 @@ class TrayService with TrayListener {
   /// WM_SETICON 讓它跟著換，視窗圖示每次都設定成功（WM_GETICON 讀得到），
   /// 但 shell 不重畫按鈕。從外部行程做同一件事卻永遠有效，原因沒查出來。
   /// 真要做的話得改用 ITaskbarList3::SetOverlayIcon（右下角疊徽章）。
-  Future<void> setRecording(bool recording) async {
+  Future<void> setRecording(bool recording, {bool quick = false}) async {
     final name = recording ? 'tray_icon_recording' : 'tray_icon';
     // Windows 的系統匣只吃 .ico，PNG 會靜默失敗導致沒有圖示。
     await trayManager.setIcon(
       Platform.isWindows ? 'assets/icons/$name.ico' : 'assets/icons/$name.png',
     );
-    await trayManager.setToolTip(recording ? 'ZeroType — 錄音中' : 'ZeroType');
+    // 系統匣圖示釘在工作列時，tooltip 是視窗看不到時唯一能分辨模式的地方。
+    await trayManager.setToolTip(
+      recording ? 'ZeroType — 錄音中${quick ? '（精簡）' : '（全局）'}' : 'ZeroType',
+    );
   }
 
   Future<void> _buildMenu() async {
