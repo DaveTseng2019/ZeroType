@@ -117,9 +117,8 @@ const double kSilentChunkRms = 20;
 /// 要擋住這類錄音門檻得拉到 500 以上，那又開始有吃掉小聲人聲的風險。
 /// 真要修這條路得換判別方式（音框 RMS 的動態範圍），不是繼續往上加門檻。
 ///
-/// 用來決定 onCaptureStart（提示音）何時觸發：沒開等待時，第一個超過此門檻的
-/// chunk 就代表麥克風真的活了。也是 [hasAnySound] 判斥「整段都沒訊號」的門檻。
-/// 不拿來當就緒判斷 —— 見 [MicReadyGate.accept]。
+/// [hasAnySound] 判斥「整段都沒訊號」的門檻。不拿來當就緒判斷 ——
+/// 見 [MicReadyGate.accept]。
 const double kDeadChunkRms = 150.0;
 
 /// 要連續多久不靜音才算麥克風真的活了。
@@ -556,7 +555,9 @@ class RecordingService {
         if (onAmplitude != null) _emitAmplitude(chunk, onAmplitude);
         return; // 這個 chunk 已經在 pending 裡進去了
       }
-      if (!announced && rmsOfPcm16(chunk) >= kDeadChunkRms) {
+      // 沒開等待就是從第一個 chunk 起全收，提示音也該在那一刻響。
+      // 原本等 RMS 過門檻才播，安靜開場（沒馬上講話）就變成延遲、甚至整場沒響。
+      if (!announced) {
         announce(DateTime.now().difference(openedAt));
       }
       _pcm?.add(chunk);
