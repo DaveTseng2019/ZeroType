@@ -23,6 +23,9 @@ class AppConstants {
   /// 提示音期間主音量的下限（百分比，0 = 不干預）
   static const String minMasterVolumeKey = 'min_master_volume';
   static const String historyRetentionDaysKey = 'history_retention_days';
+
+  /// 上一次成功抓到的 OpenRouter 費率（modelId → [輸入, 輸出]，每百萬 token 美元）
+  static const String openRouterPricingCacheKey = 'openrouter_pricing_cache';
   static const String maxRecordingMinutesKey = 'max_recording_minutes';
   static const String inputDeviceIdKey = 'input_device_id';
   static const String noiseGateStrengthKey = 'noise_gate_strength';

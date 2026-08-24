@@ -4,7 +4,6 @@ import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:zero_type/core/constants/app_constants.dart';
-import 'package:zero_type/core/constants/model_pricing.dart';
 import 'package:zero_type/features/model_config/entities/ai_provider.dart';
 
 class ModelConfigRepository {
@@ -37,22 +36,25 @@ class ModelConfigRepository {
         .map((p) => parseProvider(p as Map<String, dynamic>))
         .toList();
 
-    // OpenRouter 清單改為線上更新，失敗時保留內建清單
-    try {
-      final openRouterModels = await _fetchOpenRouterAudioModels();
-      if (openRouterModels.isNotEmpty) {
-        final i = providers.indexWhere((p) => p.id == 'openrouter');
-        if (i != -1) {
-          providers[i] = AiProvider(
-            id: providers[i].id,
-            name: providers[i].name,
-            url: providers[i].url,
-            models: openRouterModels,
-          );
+    // OpenRouter 清單改為線上更新，失敗時退回內建清單配上一次抓到的費率
+    final i = providers.indexWhere((p) => p.id == 'openrouter');
+    if (i != -1) {
+      List<AiModel>? fetched;
+      try {
+        final openRouterModels = await _fetchOpenRouterAudioModels();
+        if (openRouterModels.isNotEmpty) {
+          fetched = openRouterModels;
+          await _cachePricing(openRouterModels);
         }
+      } catch (_) {
+        // 離線或 API 失敗
       }
-    } catch (_) {
-      // 離線或 API 失敗，使用內建清單
+      providers[i] = AiProvider(
+        id: providers[i].id,
+        name: providers[i].name,
+        url: providers[i].url,
+        models: fetched ?? _withCachedPricing(providers[i].models),
+      );
     }
 
     return ProvidersConfig(speechRecognition: providers);
@@ -112,6 +114,39 @@ class ModelConfigRepository {
     return marked;
   }
 
+  /// 存下這次抓到的費率，抓不到時（離線／逾時）還有得顯示
+  Future<void> _cachePricing(List<AiModel> models) async {
+    await _prefs.setString(
+      AppConstants.openRouterPricingCacheKey,
+      jsonEncode({
+        for (final m in models)
+          if (m.inputPerM != null) m.id: [m.inputPerM, m.outputPerM],
+      }),
+    );
+  }
+
+  /// 把上一次快取的費率貼回內建清單；沒有快取就原樣回傳（選單不顯示費率）
+  List<AiModel> _withCachedPricing(List<AiModel> models) {
+    final raw = _prefs.getString(AppConstants.openRouterPricingCacheKey);
+    if (raw == null) return models;
+    final Map<String, dynamic> cached;
+    try {
+      cached = jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      return models;
+    }
+    return _markRecommended(models.map((m) {
+      final p = cached[m.id] as List?;
+      if (p == null) return m;
+      return AiModel(
+        id: m.id,
+        name: m.name,
+        inputPerM: (p[0] as num?)?.toDouble(),
+        outputPerM: (p.length > 1 ? p[1] as num? : null)?.toDouble(),
+      );
+    }).toList());
+  }
+
   /// 推薦依據：可信大廠的付費「標準級」模型中，音訊輸入價最低者
   /// （轉譯成本以輸入為大宗）。品質代理＝廠商＋級距關鍵字；
   /// 同價時取清單較前者（動態清單 API 順序為新到舊，即較新一代）。
@@ -125,7 +160,7 @@ class ModelConfigRepository {
       // token 邊界比對，避免 gemini 誤中 mini
       final lite = RegExp(r'(^|[-/.])(lite|nano|micro|mini|small)([-:.]|$)')
           .hasMatch(m.id.toLowerCase());
-      final price = m.inputPerM ?? kModelPricing[m.id]?.inputPerM;
+      final price = m.inputPerM;
       if (!trusted || lite || price == null || price <= 0) continue;
       if (price < bestPrice) {
         bestPrice = price;

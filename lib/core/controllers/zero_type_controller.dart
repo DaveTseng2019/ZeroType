@@ -366,6 +366,7 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
         text: stripPhantomUnderscore(corrected.text, result.text),
         inputTokens: _sumTokens(result.inputTokens, corrected.inputTokens),
         outputTokens: _sumTokens(result.outputTokens, corrected.outputTokens),
+        costUsd: _sumCost(result.costUsd, corrected.costUsd),
       );
     } catch (e) {
       // notes: 校正失敗不能吃掉逐字稿，退回第一段結果
@@ -375,6 +376,8 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
   }
 
   int? _sumTokens(int? a, int? b) => a == null ? b : a + (b ?? 0);
+
+  double? _sumCost(double? a, double? b) => a == null ? b : a + (b ?? 0);
 
   Future<void> _stopAndProcess() async {
     _maxDurationTimer?.cancel();
@@ -421,6 +424,7 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
               text: stripShortSentencePeriod(raw.text),
               inputTokens: raw.inputTokens,
               outputTokens: raw.outputTokens,
+              costUsd: raw.costUsd,
             );
 
       if (result == null || result.text.isEmpty) {
@@ -444,11 +448,13 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
         model: config.modelId ?? '',
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
-        costUsd: calculateCost(
-          config.modelId ?? '',
-          result.inputTokens,
-          result.outputTokens,
-        ),
+        // API 有回實際扣款金額就用它；沒有的（OpenAI／Gemini）才用本地價目表估算
+        costUsd: result.costUsd ??
+            calculateCost(
+              config.modelId ?? '',
+              result.inputTokens,
+              result.outputTokens,
+            ),
       );
       await historyRepo.addRecord(record);
       await historyRepo.accumulateStats(record);

@@ -7,6 +7,9 @@ typedef TranscriptionResult = ({
   String text,
   int? inputTokens,
   int? outputTokens,
+  // OpenRouter 隨回應帶回這次實際扣款的美元金額（要求 usage.include）。
+  // 其餘 provider 沒有這個欄位，留 null 由 kModelPricing 估算。
+  double? costUsd,
 });
 
 class SpeechRecognitionService {
@@ -95,6 +98,7 @@ class SpeechRecognitionService {
           text: (response.data as String).trim(),
           inputTokens: null,
           outputTokens: null,
+          costUsd: null,
         );
       }
     }
@@ -104,7 +108,12 @@ class SpeechRecognitionService {
     final inputTokens = usageMap?['input_tokens'] as int?;
     final outputTokens = usageMap?['output_tokens'] as int?;
 
-    return (text: text, inputTokens: inputTokens, outputTokens: outputTokens);
+    return (
+      text: text,
+      inputTokens: inputTokens,
+      outputTokens: outputTokens,
+      costUsd: null,
+    );
   }
 
   Future<TranscriptionResult> _transcribeWithGemini({
@@ -179,7 +188,12 @@ class SpeechRecognitionService {
       final outputTokens = usageMeta?['candidatesTokenCount'] as int?;
 
       print('[Gemini] Success! tokens: in=$inputTokens out=$outputTokens');
-      return (text: text, inputTokens: inputTokens, outputTokens: outputTokens);
+      return (
+        text: text,
+        inputTokens: inputTokens,
+        outputTokens: outputTokens,
+        costUsd: null,
+      );
     } on DioException catch (e) {
       print('[Gemini] DioException: ${e.message}');
       print('[Gemini] Status: ${e.response?.statusCode}');
@@ -240,6 +254,8 @@ class SpeechRecognitionService {
               ],
             },
           ],
+          // 回應帶上這次實際扣款金額，費用就不必靠本地價目表估算
+          'usage': {'include': true},
         },
         options: Options(
           headers: {
@@ -260,15 +276,21 @@ class SpeechRecognitionService {
       final usage = response.data?['usage'] as Map<String, dynamic>?;
       final inputTokens = usage?['prompt_tokens'] as int?;
       final outputTokens = usage?['completion_tokens'] as int?;
+      final costUsd = (usage?['cost'] as num?)?.toDouble();
 
       // 上游供應商決定 input_audio 吃不吃得到。實測同一個 model id 被路由到不吃音訊的
       // 供應商時，音訊會被默默丟掉：prompt_tokens 不再隨音檔長度增加，模型只看到文字。
       final upstream = response.data?['provider'];
       final audioBytes = base64Audio.length * 3 ~/ 4;
       print('[OpenRouter] Success! provider=$upstream '
-          'tokens: in=$inputTokens out=$outputTokens '
+          'tokens: in=$inputTokens out=$outputTokens cost=$costUsd '
           '(audio ${audioBytes ~/ 1024}KB / ${format})');
-      return (text: text, inputTokens: inputTokens, outputTokens: outputTokens);
+      return (
+        text: text,
+        inputTokens: inputTokens,
+        outputTokens: outputTokens,
+        costUsd: costUsd,
+      );
     } on DioException catch (e) {
       print('[OpenRouter] DioException: ${e.message}');
       print('[OpenRouter] Status: ${e.response?.statusCode}');
@@ -321,6 +343,7 @@ class SpeechRecognitionService {
           text: text,
           inputTokens: usageMeta?['promptTokenCount'] as int?,
           outputTokens: usageMeta?['candidatesTokenCount'] as int?,
+          costUsd: null,
         );
       case 'openrouter':
         final url = (customEndpoint != null && customEndpoint.isNotEmpty)
@@ -333,6 +356,7 @@ class SpeechRecognitionService {
             'messages': [
               {'role': 'user', 'content': prompt},
             ],
+            'usage': {'include': true},
           },
           options: Options(
             headers: {
@@ -350,6 +374,7 @@ class SpeechRecognitionService {
           text: text,
           inputTokens: usage?['prompt_tokens'] as int?,
           outputTokens: usage?['completion_tokens'] as int?,
+          costUsd: (usage?['cost'] as num?)?.toDouble(),
         );
       default:
         throw Exception('不支援文字校正的服務商：$provider');

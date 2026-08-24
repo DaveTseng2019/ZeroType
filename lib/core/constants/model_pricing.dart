@@ -5,21 +5,11 @@ const Map<String, ({double inputPerM, double outputPerM})> kModelPricing = {
   'gpt-4o-mini-transcribe': (inputPerM: 1.25, outputPerM: 5.0),
   'gemini-2.5-flash': (inputPerM: 1.0, outputPerM: 2.5),
   'gemini-3-flash-preview': (inputPerM: 1.0, outputPerM: 2.5),
-  // OpenRouter：inputPerM 採音訊 token 價格（pricing.audio）
-  'google/gemini-2.5-flash': (inputPerM: 1.0, outputPerM: 2.5),
-  'google/gemini-3-flash-preview': (inputPerM: 1.0, outputPerM: 3.0),
-  'google/gemini-3.7-flash': (inputPerM: 0.375, outputPerM: 1.875),
-  'google/gemini-3.6-flash': (inputPerM: 0.75, outputPerM: 3.75),
-  'google/gemini-3.5-flash': (inputPerM: 3.0, outputPerM: 9.0),
-  'google/gemini-3.5-flash-lite': (inputPerM: 0.3, outputPerM: 2.5),
-  'google/gemini-3.1-flash-lite': (inputPerM: 0.5, outputPerM: 1.5),
-  'google/gemini-3.1-pro-preview': (inputPerM: 2.0, outputPerM: 12.0),
-  'google/gemini-2.5-flash-lite': (inputPerM: 0.3, outputPerM: 0.4),
-  'google/gemini-2.5-pro': (inputPerM: 1.25, outputPerM: 10.0),
-  'openai/gpt-audio': (inputPerM: 32.0, outputPerM: 10.0),
-  'openai/gpt-audio-mini': (inputPerM: 0.6, outputPerM: 2.4),
-  'nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free': (inputPerM: 0, outputPerM: 0),
-  'xiaomi/mimo-v2.5': (inputPerM: 0.14, outputPerM: 0.28),
+  // notes: OpenRouter 的模型一律不列在這裡——價格會變（3.6-flash 就無聲降價一半，
+  //        害費用顯示高一倍）。那邊的實際費用由回應的 usage.cost 帶回，選單費率由
+  //        /api/v1/models 即時抓、抓不到時用上一次快取（ModelConfigRepository）。
+  //        OpenAI 與 Gemini 原生 API 都不回報金額，也沒有價格查詢端點，只能寫死；
+  //        改價時要手動更新這幾行。
 };
 
 const Map<String, String> kProviderNames = {
