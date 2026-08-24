@@ -44,6 +44,10 @@
       "url": "https://openrouter.ai/keys",
       "models": [
         {
+          "id": "google/gemini-3.7-flash",
+          "name": "Gemini 3.7 Flash"
+        },
+        {
           "id": "google/gemini-3.6-flash",
           "name": "Gemini 3.6 Flash"
         },

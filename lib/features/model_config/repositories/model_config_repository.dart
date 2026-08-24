@@ -77,6 +77,7 @@ class ModelConfigRepository {
       if (!modalities.contains('audio') ||
           promptPrice < 0 || // 排除 openrouter/auto 這類無固定價的路由
           id.startsWith('~') ||
+          id.endsWith(':batch') || // 半價但只能走 /api/beta/batches，chat 呼叫回 404
           id.contains('customtools')) {
         continue;
       }

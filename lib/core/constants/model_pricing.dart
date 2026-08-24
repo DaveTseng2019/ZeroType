@@ -8,7 +8,8 @@ const Map<String, ({double inputPerM, double outputPerM})> kModelPricing = {
   // OpenRouter：inputPerM 採音訊 token 價格（pricing.audio）
   'google/gemini-2.5-flash': (inputPerM: 1.0, outputPerM: 2.5),
   'google/gemini-3-flash-preview': (inputPerM: 1.0, outputPerM: 3.0),
-  'google/gemini-3.6-flash': (inputPerM: 1.5, outputPerM: 7.5),
+  'google/gemini-3.7-flash': (inputPerM: 0.375, outputPerM: 1.875),
+  'google/gemini-3.6-flash': (inputPerM: 0.75, outputPerM: 3.75),
   'google/gemini-3.5-flash': (inputPerM: 3.0, outputPerM: 9.0),
   'google/gemini-3.5-flash-lite': (inputPerM: 0.3, outputPerM: 2.5),
   'google/gemini-3.1-flash-lite': (inputPerM: 0.5, outputPerM: 1.5),
@@ -36,6 +37,7 @@ const Map<String, String> kModelNames = {
   'gemini-3-flash-preview': 'Gemini 3 Flash Preview',
   'google/gemini-2.5-flash': 'Gemini 2.5 Flash',
   'google/gemini-3-flash-preview': 'Gemini 3 Flash Preview',
+  'google/gemini-3.7-flash': 'Gemini 3.7 Flash',
   'google/gemini-3.6-flash': 'Gemini 3.6 Flash',
   'google/gemini-3.5-flash': 'Gemini 3.5 Flash',
   'google/gemini-3.5-flash-lite': 'Gemini 3.5 Flash Lite',
