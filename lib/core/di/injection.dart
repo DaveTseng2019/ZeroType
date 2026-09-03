@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../services/sound_service.dart';
 import '../services/speech_recognition_service.dart';
 import '../services/hotkey_service.dart';
+import '../services/latency_log.dart';
 import '../services/tray_service.dart';
 import '../../features/history/repositories/history_repository.dart';
 
@@ -15,6 +16,7 @@ late final HotkeyService hotkeyService;
 late final TrayService trayService;
 late final SoundService soundService;
 late final HistoryRepository historyRepository;
+late final LatencyLog latencyLog;
 
 Future<void> configureDependencies() async {
   appPrefs = await SharedPreferences.getInstance();
@@ -24,4 +26,5 @@ Future<void> configureDependencies() async {
   trayService = TrayService();
   soundService = SoundService(prefs: appPrefs);
   historyRepository = HistoryRepository();
+  latencyLog = LatencyLog();
 }

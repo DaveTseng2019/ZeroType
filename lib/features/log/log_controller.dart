@@ -40,7 +40,7 @@ class LogController extends Notifier<List<LogEntry>> {
   ///   一律當成上一筆的續行接回去，不要丟掉。
   Future<void> _restoreFromFile() async {
     try {
-      final file = await logFile();
+      final file = await _logFile();
       if (!file.existsSync()) return;
       final restored = <LogEntry>[];
       for (final line in await file.readAsLines()) {
@@ -86,7 +86,7 @@ class LogController extends Notifier<List<LogEntry>> {
   void clear() {
     state = const [];
     _tail = _tail.then((_) async {
-      final file = await logFile();
+      final file = await _logFile();
       if (file.existsSync()) await file.delete();
     }).catchError((_) {});
   }
@@ -103,8 +103,8 @@ class LogController extends Notifier<List<LogEntry>> {
 
   static Future<File>? _file;
 
-  /// 偵錯紀錄檔。設定頁要拿它來開檔，所以是公開的。
-  static Future<File> logFile() => _file ??= getApplicationSupportDirectory()
+  /// 偵錯紀錄檔。位置由歷史頁的「工作目錄」按鈕開啟，這裡只負責讀寫。
+  static Future<File> _logFile() => _file ??= getApplicationSupportDirectory()
       .then((d) => File('${d.path}/${AppConstants.debugLogFileName}'));
 
   // 寫檔串成一條鏈：_add 是同步的、可能連續呼叫，各自 await 會讓內容交錯。
@@ -116,7 +116,7 @@ class LogController extends Notifier<List<LogEntry>> {
     final line = '${entry.at.toIso8601String()} [${entry.level.name}] '
         '${entry.message}\n';
     _tail = _tail.then((_) async {
-      final file = await logFile();
+      final file = await _logFile();
       await file.writeAsString(line, mode: FileMode.append);
     }).catchError((_) {});
   }

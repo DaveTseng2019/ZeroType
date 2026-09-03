@@ -97,9 +97,9 @@ class _PageHeader extends StatelessWidget {
         ),
         TextButton.icon(
           onPressed: () =>
-              ref.read(historyControllerProvider.notifier).openAudioFolder(),
+              ref.read(historyControllerProvider.notifier).openDataFolder(),
           icon: const Icon(Icons.folder_open_outlined, size: 24),
-          label: Text('開啟目錄',
+          label: Text('工作目錄',
               style: TextStyle(fontSize: ref.watch(fontSizesProvider).itemTitle)),
           style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
         ),

@@ -107,22 +107,22 @@ class HistoryController extends AsyncNotifier<List<TranscriptionRecord>> {
     }
   }
 
-  /// 開啟音檔資料夾。所有錄音都在同一個地方，所以是整頁一顆按鈕，
+  /// 開啟資料夾。所有紀錄都在同一個地方，所以是整頁一顆按鈕，
   /// 不是每筆記錄各一顆。
-  Future<void> openAudioFolder() async {
+  Future<void> openDataFolder() async {
     try {
-      final dir = (await historyRepository.audioDir()).path;
+      final dir = (await historyRepository.dataDir()).path;
       if (Platform.isMacOS) {
         await Process.run('open', [dir]);
       } else if (Platform.isWindows) {
-        // 分隔符一定要全部換成反斜線。路徑是拿 getApplicationSupportDirectory()
-        // （反斜線）接上 '/history_audio' 組出來的，混合分隔符 Windows API 吃得下，
-        // 但 explorer.exe 的命令列剖析器不吃 —— 它會當成無法辨識的參數，默默改開
-        // 預設資料夾（「文件」），看起來就像按鈕跑錯地方。
+        // notes: 分隔符一定要全部換成反斜線。這條路徑目前是純反斜線，但
+        // getApplicationSupportDirectory() 之後接任何 '/xxx' 就會變混合分隔符 ——
+        // Windows API 吃得下，explorer.exe 的命令列剖析器不吃，它會當成無法辨識的
+        // 參數，默默改開預設資料夾（「文件」），看起來就像按鈕跑錯地方。留著當保險。
         await Process.run('explorer.exe', [dir.replaceAll('/', r'\')]);
       }
     } catch (e) {
-      print('[HistoryController] openAudioFolder error: $e');
+      print('[HistoryController] openDataFolder error: $e');
     }
   }
 

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -341,25 +342,39 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
         : _kBareTranscribePrompt;
 
     final service = speechService;
-    final result = await service.transcribe(
-      audioFilePath: filePath,
-      apiKey: config.apiKey!,
-      provider: config.providerId!,
-      model: config.modelId!,
-      prompt: audioPrompt,
-      customEndpoint: config.customEndpoint,
+    final audioFile = File(filePath);
+    final audioBytes = audioFile.existsSync() ? audioFile.lengthSync() : null;
+    final result = await _timed(
+      'audio',
+      config.providerId!,
+      config.modelId!,
+      audioBytes,
+      () => service.transcribe(
+        audioFilePath: filePath,
+        apiKey: config.apiKey!,
+        provider: config.providerId!,
+        model: config.modelId!,
+        prompt: audioPrompt,
+        customEndpoint: config.customEndpoint,
+      ),
     );
 
     if (isWhisper || result.text.isEmpty) return result;
     final correctionPrompt = await dictionaryRepo.buildCorrectionPrompt();
 
     try {
-      final corrected = await service.correctTranscript(
-        apiKey: config.apiKey!,
-        provider: config.providerId!,
-        model: config.modelId!,
-        prompt: _buildTextStagePrompt(prompt, correctionPrompt, result.text),
-        customEndpoint: config.customEndpoint,
+      final corrected = await _timed(
+        'text',
+        config.providerId!,
+        config.modelId!,
+        null,
+        () => service.correctTranscript(
+          apiKey: config.apiKey!,
+          provider: config.providerId!,
+          model: config.modelId!,
+          prompt: _buildTextStagePrompt(prompt, correctionPrompt, result.text),
+          customEndpoint: config.customEndpoint,
+        ),
       );
       if (corrected.text.isEmpty) return result;
       return (
@@ -372,6 +387,38 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       // notes: 校正失敗不能吃掉逐字稿，退回第一段結果
       print('[ZeroType] Dictionary correction failed, using raw transcript: $e');
       return result;
+    }
+  }
+
+  /// 兩段呼叫各自計時，成功失敗都寫進 latency.jsonl，供事後比較服務商。
+  Future<T> _timed<T>(
+    String stage,
+    String provider,
+    String model,
+    int? audioBytes,
+    Future<T> Function() call,
+  ) async {
+    final sw = Stopwatch()..start();
+    try {
+      final r = await call();
+      await latencyLog.record(
+        stage: stage,
+        provider: provider,
+        model: model,
+        elapsedMs: sw.elapsedMilliseconds,
+        audioBytes: audioBytes,
+      );
+      return r;
+    } catch (e) {
+      await latencyLog.record(
+        stage: stage,
+        provider: provider,
+        model: model,
+        elapsedMs: sw.elapsedMilliseconds,
+        audioBytes: audioBytes,
+        error: e.toString(),
+      );
+      rethrow;
     }
   }
 

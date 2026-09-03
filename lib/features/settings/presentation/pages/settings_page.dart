@@ -340,25 +340,6 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                       loading: () => const _LoadingTile(),
                       error: (_, __) => const SizedBox.shrink(),
                     ),
-                    const Divider(height: 1, indent: 56),
-                    // Debug Log
-                    settings.when(
-                      data: (data) => _SettingTile(
-                        icon: Icons.bug_report_outlined,
-                        title: '偵錯模式',
-                        subtitle: '紀錄一併寫到 debug.log，並多記貼上目標等細節；'
-                            '平常關著，追問題時才開。紀錄頁可開啟檔案位置，'
-                            '清空紀錄或清除歷史時一併刪掉',
-                        trailing: Switch(
-                          value: data.debugLog,
-                          onChanged: (val) => ref
-                              .read(settingsControllerProvider.notifier)
-                              .toggleDebugLog(val),
-                        ),
-                      ),
-                      loading: () => const _LoadingTile(),
-                      error: (_, __) => const SizedBox.shrink(),
-                    ),
                   ],
                 ),
 
