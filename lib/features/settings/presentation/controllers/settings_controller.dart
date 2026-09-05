@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
+import 'package:zero_type/core/services/hotkey_service.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:record/record.dart';
@@ -26,7 +27,7 @@ class SettingsController extends AsyncNotifier<SettingsState> {
       final startupMinimized = appPrefs.getBool(AppConstants.startupMinimizedKey) ?? false;
       
       print('[SettingsController] Fetching current hotkey...');
-      final hotkey = hotkeyService.currentHotkey;
+      final hotkey = hotkeyService.hotkeyOf(HotkeyKind.record);
 
       print('[SettingsController] Fetching permissions...');
       final isAccessibilityAuthorized = await _checkAccessibility();
@@ -52,7 +53,8 @@ class SettingsController extends AsyncNotifier<SettingsState> {
         launchAtStartup: isLaunchEnabled,
         startupMinimized: startupMinimized,
         hotkey: hotkey,
-        quickHotkey: hotkeyService.quickHotkey,
+        quickHotkey: hotkeyService.hotkeyOf(HotkeyKind.quick),
+        phraseHotkey: hotkeyService.hotkeyOf(HotkeyKind.phrase),
         quickAutoEnter:
             prefs.getBool(AppConstants.quickAutoEnterKey) ?? true,
         debugLog: prefs.getBool(AppConstants.debugLogKey) ?? false,
@@ -65,6 +67,11 @@ class SettingsController extends AsyncNotifier<SettingsState> {
         pasteFailedSound:
             prefs.getString(AppConstants.pasteFailedSoundKey) ??
                 kDefaultPasteFailedSound,
+        phrasePickerSound:
+            prefs.getString(AppConstants.phrasePickerSoundKey) ??
+                kDefaultPhrasePickerSound,
+        phrasePickerSoundEnabled:
+            prefs.getBool(AppConstants.phrasePickerSoundEnabledKey) ?? true,
         minMasterVolumePercent:
             prefs.getInt(AppConstants.minMasterVolumeKey) ??
                 kDefaultMinMasterVolumePercent,
@@ -113,8 +120,8 @@ class SettingsController extends AsyncNotifier<SettingsState> {
     }
   }
 
-  Future<void> startRecordingHotkey({bool quick = false}) async {
-    print('[SettingsController] Starting hotkey recording (quick: $quick)...');
+  Future<void> startRecordingHotkey(HotkeyKind kind) async {
+    print('[SettingsController] Starting hotkey recording (${kind.name})...');
     final currentState = state.value;
     if (currentState == null) return;
 
@@ -123,7 +130,7 @@ class SettingsController extends AsyncNotifier<SettingsState> {
 
     state = AsyncData(currentState.copyWith(
       isRecordingHotkey: true,
-      isEditingQuickHotkey: quick,
+      editingHotkey: kind,
     ));
   }
 
@@ -171,24 +178,27 @@ class SettingsController extends AsyncNotifier<SettingsState> {
       scope: HotKeyScope.system,
     );
 
-    final quick = state.value?.isEditingQuickHotkey ?? false;
+    final kind = state.value?.editingHotkey ?? HotkeyKind.record;
     // 兩組設成同一個組合的話，第二次 register 會失敗，變成有一組熱鍵無聲失效。
-    final other = quick ? hotkeyService.currentHotkey : hotkeyService.quickHotkey;
-    if (_sameCombo(newHotKey, other)) {
-      print('[SettingsController] Hotkey clashes with the other one, ignoring.');
+    final clash = HotkeyKind.values
+        .where((k) => k != kind)
+        .any((k) => _sameCombo(newHotKey, hotkeyService.hotkeyOf(k)));
+    if (clash) {
+      print('[SettingsController] Hotkey clashes with another one, ignoring.');
       stopRecordingHotkey();
       return;
     }
 
-    await hotkeyService.updateHotkey(newHotKey, quick: quick);
+    await hotkeyService.updateHotkey(kind, newHotKey);
 
     // Stop recording and trigger refresh
     final currentState = state.value;
     if (currentState != null) {
       state = AsyncData(currentState.copyWith(
         isRecordingHotkey: false,
-        hotkey: quick ? null : newHotKey,
-        quickHotkey: quick ? newHotKey : null,
+        hotkey: kind == HotkeyKind.record ? newHotKey : null,
+        quickHotkey: kind == HotkeyKind.quick ? newHotKey : null,
+        phraseHotkey: kind == HotkeyKind.phrase ? newHotKey : null,
       ));
     }
     
@@ -247,6 +257,23 @@ class SettingsController extends AsyncNotifier<SettingsState> {
     final currentState = state.value;
     if (currentState != null) {
       state = AsyncData(currentState.copyWith(recordingStoppedSound: path));
+    }
+  }
+
+  Future<void> setPhrasePickerSound(String path) async {
+    await appPrefs.setString(AppConstants.phrasePickerSoundKey, path);
+    final currentState = state.value;
+    if (currentState != null) {
+      state = AsyncData(currentState.copyWith(phrasePickerSound: path));
+    }
+  }
+
+  Future<void> togglePhrasePickerSound(bool value) async {
+    await appPrefs.setBool(AppConstants.phrasePickerSoundEnabledKey, value);
+    final currentState = state.value;
+    if (currentState != null) {
+      state =
+          AsyncData(currentState.copyWith(phrasePickerSoundEnabled: value));
     }
   }
 

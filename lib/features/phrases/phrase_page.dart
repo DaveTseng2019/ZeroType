@@ -46,8 +46,10 @@ class PhrasePage extends ConsumerWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              '在歷史記錄按「加入常用詞彙」把文字存進來，隨時複製取用；'
-              '「編輯檔案」是直接改 phrases.json，改完按「重新載入」',
+              '按「常用詞彙快捷鍵」（設定頁，預設 Alt+C）叫出選擇器：打字過濾、'
+              '↑↓ 選、Enter 直接貼到你正在打字的地方，同一句話不用再講一次。'
+              '詞彙從歷史記錄按「加入常用詞彙」存進來；「編輯檔案」是直接改 '
+              'phrases.json，改完按「重新載入」',
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: colorScheme.onSurface.withAlpha(150),
                   ),

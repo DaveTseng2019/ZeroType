@@ -13,6 +13,7 @@ add_executable(${BINARY_NAME} WIN32
   "win32_window.cpp"
   "channel_handler.cpp"
   "overlay_window.cpp"
+  "picker_window.cpp"
   "${FLUTTER_MANAGED_DIR}/generated_plugin_registrant.cc"
   "Runner.rc"
   "runner.exe.manifest"
@@ -41,6 +42,10 @@ target_compile_definitions(${BINARY_NAME} PRIVATE "NOMINMAX")
 target_link_libraries(${BINARY_NAME} PRIVATE flutter flutter_wrapper_app)
 target_link_libraries(${BINARY_NAME} PRIVATE "dwmapi.lib")
 target_link_libraries(${BINARY_NAME} PRIVATE "user32.lib")
+# 常用詞彙選擇器要定位中文輸入法的組字視窗（ImmSetCompositionWindow）
+target_link_libraries(${BINARY_NAME} PRIVATE "imm32.lib")
+# 浮窗要在擺過去之前問目標螢幕的 DPI（GetDpiForMonitor）
+target_link_libraries(${BINARY_NAME} PRIVATE "shcore.lib")
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
 
 # Run the Flutter tool portions of the build. This must not be removed.

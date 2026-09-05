@@ -16,7 +16,9 @@ import 'core/di/injection.dart';
 import 'core/services/app_lifecycle.dart';
 import 'core/state/zero_type_state.dart';
 import 'core/theme/app_theme.dart';
+import 'core/services/hotkey_service.dart';
 import 'core/theme/theme_controller.dart';
+import 'features/phrases/phrase_picker.dart';
 import 'shared/widgets/main_shell.dart';
 
 void main() async {
@@ -118,8 +120,9 @@ class _AppInitializerState extends ConsumerState<_AppInitializer>
 
   Future<void> _initializeServices() async {
     await _hotkeyService.initialize();
-    _hotkeyService.setCallback(_onHotkeyActivated);
-    _hotkeyService.setQuickCallback(_onQuickHotkeyActivated);
+    _hotkeyService.setCallback(HotkeyKind.record, _onHotkeyActivated);
+    _hotkeyService.setCallback(HotkeyKind.quick, _onQuickHotkeyActivated);
+    _hotkeyService.setCallback(HotkeyKind.phrase, _onPhraseHotkeyActivated);
 
     await _trayService.initialize(
       onShowWindow: _showWindow,
@@ -140,6 +143,10 @@ class _AppInitializerState extends ConsumerState<_AppInitializer>
     await ref
         .read(zeroTypeControllerProvider.notifier)
         .toggleRecording(quick: true);
+  }
+
+  Future<void> _onPhraseHotkeyActivated() async {
+    await ref.read(phrasePickerProvider).open();
   }
 
   void _showWindow() {

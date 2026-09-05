@@ -1,4 +1,5 @@
 import 'package:hotkey_manager/hotkey_manager.dart';
+import 'package:zero_type/core/services/hotkey_service.dart';
 import 'package:record/record.dart';
 import 'package:zero_type/core/services/recording_service.dart';
 import 'package:zero_type/core/services/sound_service.dart';
@@ -11,10 +12,11 @@ class SettingsState {
     this.startupMinimized = false,
     required this.hotkey,
     required this.quickHotkey,
+    required this.phraseHotkey,
     this.isAccessibilityAuthorized = false,
     this.isMicrophoneAuthorized = false,
     this.isRecordingHotkey = false,
-    this.isEditingQuickHotkey = false,
+    this.editingHotkey = HotkeyKind.record,
     this.quickAutoEnter = true,
     this.debugLog = false,
     this.soundEnabled = true,
@@ -22,6 +24,8 @@ class SettingsState {
     this.stopSound = kDefaultStopSound,
     this.recordingStoppedSound = kDefaultRecordingStoppedSound,
     this.pasteFailedSound = kDefaultPasteFailedSound,
+    this.phrasePickerSound = kDefaultPhrasePickerSound,
+    this.phrasePickerSoundEnabled = true,
     this.minMasterVolumePercent = kDefaultMinMasterVolumePercent,
     this.historyRetentionDays = 7,
     this.maxRecordingMinutes = 1,
@@ -39,12 +43,15 @@ class SettingsState {
 
   /// 精簡模式熱鍵：講完自動停、貼上後自動送出
   final HotKey quickHotkey;
+
+  /// 常用詞彙選擇器熱鍵：不用開口，挑一句直接貼上
+  final HotKey phraseHotkey;
   final bool isAccessibilityAuthorized;
   final bool isMicrophoneAuthorized;
   final bool isRecordingHotkey;
 
   /// 錄製中的熱鍵是哪一組（只在 [isRecordingHotkey] 為 true 時有意義）
-  final bool isEditingQuickHotkey;
+  final HotkeyKind editingHotkey;
 
   /// 精簡模式貼上後要不要自動按 Enter 送出
   final bool quickAutoEnter;
@@ -58,6 +65,12 @@ class SettingsState {
 
   /// 貼上沒送進去時播的音效
   final String pasteFailedSound;
+
+  /// 常用詞彙浮窗出現時播的音效
+  final String phrasePickerSound;
+
+  /// 常用詞彙浮窗要不要出聲（獨立於音效總開關之外）
+  final bool phrasePickerSoundEnabled;
 
   /// 提示音期間主音量的下限（百分比）；0 = 不干預系統音量
   final int minMasterVolumePercent;
@@ -86,10 +99,11 @@ class SettingsState {
     bool? startupMinimized,
     HotKey? hotkey,
     HotKey? quickHotkey,
+    HotKey? phraseHotkey,
     bool? isAccessibilityAuthorized,
     bool? isMicrophoneAuthorized,
     bool? isRecordingHotkey,
-    bool? isEditingQuickHotkey,
+    HotkeyKind? editingHotkey,
     bool? quickAutoEnter,
     bool? debugLog,
     bool? soundEnabled,
@@ -97,6 +111,8 @@ class SettingsState {
     String? stopSound,
     String? recordingStoppedSound,
     String? pasteFailedSound,
+    String? phrasePickerSound,
+    bool? phrasePickerSoundEnabled,
     int? minMasterVolumePercent,
     int? historyRetentionDays,
     int? maxRecordingMinutes,
@@ -112,13 +128,13 @@ class SettingsState {
       startupMinimized: startupMinimized ?? this.startupMinimized,
       hotkey: hotkey ?? this.hotkey,
       quickHotkey: quickHotkey ?? this.quickHotkey,
+      phraseHotkey: phraseHotkey ?? this.phraseHotkey,
       isAccessibilityAuthorized:
           isAccessibilityAuthorized ?? this.isAccessibilityAuthorized,
       isMicrophoneAuthorized:
           isMicrophoneAuthorized ?? this.isMicrophoneAuthorized,
       isRecordingHotkey: isRecordingHotkey ?? this.isRecordingHotkey,
-      isEditingQuickHotkey:
-          isEditingQuickHotkey ?? this.isEditingQuickHotkey,
+      editingHotkey: editingHotkey ?? this.editingHotkey,
       quickAutoEnter: quickAutoEnter ?? this.quickAutoEnter,
       debugLog: debugLog ?? this.debugLog,
       soundEnabled: soundEnabled ?? this.soundEnabled,
@@ -126,6 +142,9 @@ class SettingsState {
       stopSound: stopSound ?? this.stopSound,
       recordingStoppedSound: recordingStoppedSound ?? this.recordingStoppedSound,
       pasteFailedSound: pasteFailedSound ?? this.pasteFailedSound,
+      phrasePickerSound: phrasePickerSound ?? this.phrasePickerSound,
+      phrasePickerSoundEnabled:
+          phrasePickerSoundEnabled ?? this.phrasePickerSoundEnabled,
       minMasterVolumePercent:
           minMasterVolumePercent ?? this.minMasterVolumePercent,
       historyRetentionDays: historyRetentionDays ?? this.historyRetentionDays,

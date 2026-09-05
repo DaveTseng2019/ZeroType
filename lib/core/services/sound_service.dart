@@ -83,6 +83,9 @@ const String kDefaultCancelSound = '/System/Library/Sounds/Basso.aiff';
 const String kDefaultPasteFailedSound = '/System/Library/Sounds/Funk.aiff';
 /// 麥克風真正關閉那一刻播的音效（跟 [kDefaultStopSound] 不同 —— 那個是「文字準備好了」）。
 const String kDefaultRecordingStoppedSound = '/System/Library/Sounds/Tink.aiff';
+/// 常用詞彙浮窗出現時播。浮窗開在插入點旁邊，眼睛不一定在那裡，聲音是它到底
+/// 有沒有出來的第二個訊號。
+const String kDefaultPhrasePickerSound = '/System/Library/Sounds/Pop.aiff';
 
 /// 提示音期間主音量的下限（百分比）。使用者實測的耳機聽閾：主音量 20 以下
 /// 就聽不見提示音。0 = 不干預系統音量。
@@ -98,6 +101,7 @@ const Map<String, String> kWindowsSounds = {
   kDefaultCancelSound: r'C:\Windows\Media\Speech Misrecognition.wav',
   kDefaultRecordingStoppedSound: r'C:\Windows\Media\Speech Off.wav',
   kDefaultPasteFailedSound: r'C:\Windows\Media\Windows Critical Stop.wav',
+  kDefaultPhrasePickerSound: r'C:\Windows\Media\Windows Balloon.wav',
 };
 
 const Map<String, String> kWindowsSoundLabels = {
@@ -173,6 +177,15 @@ class SoundService {
       _prefs.getString(AppConstants.pasteFailedSoundKey) ??
       kDefaultPasteFailedSound;
 
+  String get phrasePickerSoundPath =>
+      _prefs.getString(AppConstants.phrasePickerSoundKey) ??
+      kDefaultPhrasePickerSound;
+
+  /// 常用詞彙浮窗要不要出聲。獨立於音效總開關之外再給一個，是因為這個提示音
+  /// 每次叫出詞彙都會響，跟錄音那幾顆不同，有人只想關掉這一個。
+  bool get phrasePickerSoundEnabled =>
+      _prefs.getBool(AppConstants.phrasePickerSoundEnabledKey) ?? true;
+
   /// 提示音期間主音量的下限（0~1）；0 = 不干預系統音量。見 [_boostMaster]。
   double get minMasterVolume =>
       (_prefs.getInt(AppConstants.minMasterVolumeKey) ??
@@ -200,6 +213,12 @@ class SoundService {
   Future<void> playFailedSound() async {
     if (!soundEnabled) return;
     await _play(pasteFailedSoundPath);
+  }
+
+  /// 常用詞彙浮窗出現時播。總開關與它自己的開關都要開著才響。
+  Future<void> playPhrasePickerSound() async {
+    if (!soundEnabled || !phrasePickerSoundEnabled) return;
+    await _play(phrasePickerSoundPath);
   }
 
   /// 錄音真正停止（麥克風關閉）那一刻播，跟「文字準備好了」的 [playStopSound] 分開。

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
+import 'package:zero_type/core/services/hotkey_service.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:record/record.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -103,6 +104,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                             title: '全局錄音快捷鍵',
                             subtitle: '按下此組合鍵即可開始/停止錄音',
                             hotkey: data.hotkey,
+                            kind: HotkeyKind.record,
                           ),
                           const Divider(height: 1, indent: 56),
                           _buildHotkeyTile(
@@ -112,14 +114,24 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                             title: '精簡模式快捷鍵',
                             subtitle: '講完就自動停止錄音，不必再按一次',
                             hotkey: data.quickHotkey,
-                            quick: true,
+                            kind: HotkeyKind.quick,
+                          ),
+                          const Divider(height: 1, indent: 56),
+                          _buildHotkeyTile(
+                            context,
+                            ref,
+                            icon: Icons.bookmarks,
+                            title: '常用詞彙快捷鍵',
+                            subtitle: '叫出常用詞彙清單，挑一句直接貼上，不用再講一次',
+                            hotkey: data.phraseHotkey,
+                            kind: HotkeyKind.phrase,
                           ),
                           const Divider(height: 1, indent: 56),
                           _SettingTile(
                             icon: Icons.keyboard_return,
                             title: '精簡模式自動送出',
                             subtitle: '文字貼上後自動按 Enter；關閉則只貼上不送出',
-                            trailing: Switch(
+                            trailing: _SettingSwitch(
                               value: data.quickAutoEnter,
                               onChanged: (val) => ref
                                   .read(settingsControllerProvider.notifier)
@@ -162,7 +174,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                         icon: Icons.launch,
                         title: '開機啟動',
                         subtitle: '在電腦啟動時自動開啟 ZeroType',
-                        trailing: Switch(
+                        trailing: _SettingSwitch(
                           value: data.launchAtStartup,
                           onChanged: (val) => ref
                               .read(settingsControllerProvider.notifier)
@@ -182,7 +194,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                                   icon: Icons.remove_circle_outline,
                                   title: '啟動時縮小至系統匣',
                                   subtitle: '程式啟動時不顯示視窗,僅顯示於系統匣',
-                                  trailing: Switch(
+                                  trailing: _SettingSwitch(
                                     value: data.startupMinimized,
                                     onChanged: (val) => ref
                                         .read(settingsControllerProvider.notifier)
@@ -379,7 +391,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Switch(
+                            _SettingSwitch(
                               value: data.soundEnabled,
                               onChanged: (val) => ref
                                   .read(settingsControllerProvider.notifier)
@@ -465,6 +477,39 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                       error: (_, __) => const SizedBox.shrink(),
                     ),
                     const Divider(height: 1, indent: 56),
+                    settings.when(
+                      data: (data) => _SoundPickerTile(
+                        icon: Icons.bookmarks_outlined,
+                        title: '常用詞彙音效',
+                        subtitle: '常用詞彙浮窗出現時播放',
+                        selectedPath: data.phrasePickerSound,
+                        enabled:
+                            data.soundEnabled && data.phrasePickerSoundEnabled,
+                        slot: 4,
+                        onChanged: (path) => ref
+                            .read(settingsControllerProvider.notifier)
+                            .setPhrasePickerSound(path),
+                      ),
+                      loading: () => const _LoadingTile(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
+                    const Divider(height: 1, indent: 56),
+                    settings.when(
+                      data: (data) => _SettingTile(
+                        icon: Icons.notifications_active_outlined,
+                        title: '播放常用詞彙音效',
+                        subtitle: '每次叫出常用詞彙都會響，只想關掉這一個時用',
+                        trailing: _SettingSwitch(
+                          value: data.phrasePickerSoundEnabled,
+                          onChanged: (val) => ref
+                              .read(settingsControllerProvider.notifier)
+                              .togglePhrasePickerSound(val),
+                        ),
+                      ),
+                      loading: () => const _LoadingTile(),
+                      error: (_, __) => const SizedBox.shrink(),
+                    ),
+                    const Divider(height: 1, indent: 56),
                     // 主音量下限（0 = 不干預系統音量）
                     settings.when(
                       data: (data) => _SettingTile(
@@ -510,7 +555,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                     _SettingTile(
                       icon: Icons.settings_backup_restore,
                       title: '恢復預設音效',
-                      subtitle: '四個音效、開關與最小系統音量都回到初始設定',
+                      subtitle: '五個音效、開關與最小系統音量都回到初始設定',
                       trailing: OutlinedButton(
                         onPressed: () {
                           final notifier =
@@ -522,6 +567,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                           notifier.setStopSound(kDefaultStopSound);
                           notifier.setPasteFailedSound(
                               kDefaultPasteFailedSound);
+                          notifier.setPhrasePickerSound(
+                              kDefaultPhrasePickerSound);
+                          notifier.togglePhrasePickerSound(true);
                           notifier.setMinMasterVolumePercent(
                               kDefaultMinMasterVolumePercent);
                         },
@@ -616,12 +664,12 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
     required String title,
     required String subtitle,
     required HotKey hotkey,
-    bool quick = false,
+    required HotkeyKind kind,
   }) {
     return InkWell(
       onTap: () => ref
           .read(settingsControllerProvider.notifier)
-          .startRecordingHotkey(quick: quick),
+          .startRecordingHotkey(kind),
       borderRadius: BorderRadius.circular(16),
       child: _SettingTile(
         icon: icon,
@@ -1176,6 +1224,27 @@ class _SettingTile extends ConsumerWidget {
   }
 }
 
+/// 設定頁的開關。原本的 Switch 比旁邊的標題字大一截，縮到跟文字相稱
+/// —— 跟紀錄頁的「偵錯模式」開關用同一組數值。
+class _SettingSwitch extends StatelessWidget {
+  const _SettingSwitch({required this.value, required this.onChanged});
+
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Transform.scale(
+      scale: 0.75,
+      child: Switch(
+        value: value,
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        onChanged: onChanged,
+      ),
+    );
+  }
+}
+
 class _AppToggle extends StatelessWidget {
   final bool value;
   final ValueChanged<bool> onChanged;
@@ -1191,20 +1260,28 @@ class _AppToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.05),
-      borderRadius: BorderRadius.circular(10),
-      child: InkWell(
+    // trailing 一律靠右。這顆是 44 寬，下面幾顆開關是 52 寬（Material 3 的固定
+    // 值，見 switch.dart 的 _SwitchConfigM3.switchWidth），靠右時圖示的中線會比
+    // 開關的中線右偏 4。補一段右邊距推回去，兩者的中線才在同一條垂直線上。
+    return Padding(
+      padding: const EdgeInsets.only(right: (52 - 44) / 2),
+      child: Material(
+        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.05),
         borderRadius: BorderRadius.circular(10),
-        onTap: () => onChanged(!value),
-        child: Container(
-          width: 44,
-          height: 44,
-          alignment: Alignment.center,
-          child: Icon(
-            value ? activeIcon : inactiveIcon,
-            size: 28,
-            color: value ? Colors.orangeAccent : Theme.of(context).colorScheme.primary,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => onChanged(!value),
+          child: Container(
+            width: 44,
+            height: 44,
+            alignment: Alignment.center,
+            child: Icon(
+              value ? activeIcon : inactiveIcon,
+              size: 28,
+              color: value
+                  ? Colors.orangeAccent
+                  : Theme.of(context).colorScheme.primary,
+            ),
           ),
         ),
       ),

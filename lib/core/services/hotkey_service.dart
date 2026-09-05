@@ -5,56 +5,64 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 typedef HotkeyCallback = Future<void> Function();
 
+/// 三組全域熱鍵。[prefsKey] 是它在 SharedPreferences 裡的鍵名，改名會讓
+/// 使用者已經設好的熱鍵退回預設值。
+enum HotkeyKind {
+  /// 一般錄音：按一次開始，再按一次停止
+  record('global_hotkey'),
+
+  /// 精簡模式：講完自動停、貼上後自動送出
+  quick('quick_hotkey'),
+
+  /// 常用詞彙選擇器：不用開口，挑一句直接貼上
+  phrase('phrase_hotkey');
+
+  const HotkeyKind(this.prefsKey);
+
+  final String prefsKey;
+}
+
 class HotkeyService {
   HotkeyService({required SharedPreferences prefs}) : _prefs = prefs;
 
   final SharedPreferences _prefs;
-  static const String _hotkeyKey = 'global_hotkey';
-  static const String _quickHotkeyKey = 'quick_hotkey';
 
-  late HotKey _currentHotkey;
-  late HotKey _quickHotkey;
-  HotkeyCallback? _onActivated;
-  HotkeyCallback? _onQuickActivated;
+  static final Map<HotkeyKind, HotKey> _defaults = {
+    HotkeyKind.record: HotKey(
+      key: PhysicalKeyboardKey.keyZ,
+      modifiers: [HotKeyModifier.alt],
+      scope: HotKeyScope.system,
+    ),
+    HotkeyKind.quick: HotKey(
+      key: PhysicalKeyboardKey.keyX,
+      modifiers: [HotKeyModifier.alt],
+      scope: HotKeyScope.system,
+    ),
+    HotkeyKind.phrase: HotKey(
+      key: PhysicalKeyboardKey.keyC,
+      modifiers: [HotKeyModifier.alt],
+      scope: HotKeyScope.system,
+    ),
+  };
+
+  final Map<HotkeyKind, HotKey> _hotkeys = {};
+  final Map<HotkeyKind, HotkeyCallback> _callbacks = {};
   bool _isPaused = false;
 
-  HotKey get currentHotkey => _currentHotkey;
-
-  /// 精簡模式：講完自動停、貼上後自動送出
-  HotKey get quickHotkey => _quickHotkey;
+  HotKey hotkeyOf(HotkeyKind kind) => _hotkeys[kind] ?? _defaults[kind]!;
 
   Future<void> initialize() async {
-    await _loadPersistedHotkey();
-    print('[HotkeyService] Initialized with hotkey: $_currentHotkey '
-        '(quick: $_quickHotkey)');
+    for (final kind in HotkeyKind.values) {
+      _hotkeys[kind] = _load(kind);
+    }
+    print('[HotkeyService] Initialized with hotkeys: $_hotkeys');
     await hotKeyManager.unregisterAll();
     _isPaused = false;
     await _registerCurrent();
   }
 
-  Future<void> _loadPersistedHotkey() async {
-    _currentHotkey = _load(
-      _hotkeyKey,
-      // Default: Alt + Z
-      HotKey(
-        key: PhysicalKeyboardKey.keyZ,
-        modifiers: [HotKeyModifier.alt],
-        scope: HotKeyScope.system,
-      ),
-    );
-    _quickHotkey = _load(
-      _quickHotkeyKey,
-      // Default: Alt + X
-      HotKey(
-        key: PhysicalKeyboardKey.keyX,
-        modifiers: [HotKeyModifier.alt],
-        scope: HotKeyScope.system,
-      ),
-    );
-  }
-
-  HotKey _load(String prefsKey, HotKey fallback) {
-    final json = _prefs.getString(prefsKey);
+  HotKey _load(HotkeyKind kind) {
+    final json = _prefs.getString(kind.prefsKey);
     if (json != null) {
       try {
         final Map<String, dynamic> map = jsonDecode(json);
@@ -67,7 +75,7 @@ class HotkeyService {
         print('[HotkeyService] Error loading hotkey: $e');
       }
     }
-    return fallback;
+    return _defaults[kind]!;
   }
 
   static bool _isModifierOnly(HotKey hotkey) {
@@ -84,33 +92,24 @@ class HotkeyService {
     return modifierKeys.contains(hotkey.key);
   }
 
-  Future<void> _saveHotkey(String prefsKey, HotKey hotkey) async {
+  Future<void> _saveHotkey(HotkeyKind kind, HotKey hotkey) async {
     try {
-      await _prefs.setString(prefsKey, jsonEncode(hotkey.toJson()));
+      await _prefs.setString(kind.prefsKey, jsonEncode(hotkey.toJson()));
     } catch (e) {
       print('[HotkeyService] Error saving hotkey: $e');
     }
   }
 
-  void setCallback(HotkeyCallback callback) {
-    _onActivated = callback;
+  void setCallback(HotkeyKind kind, HotkeyCallback callback) {
+    _callbacks[kind] = callback;
   }
 
-  void setQuickCallback(HotkeyCallback callback) {
-    _onQuickActivated = callback;
-  }
-
-  Future<void> updateHotkey(HotKey newKey, {bool quick = false}) async {
-    print('[HotkeyService] Updating ${quick ? 'quick ' : ''}hotkey to $newKey');
+  Future<void> updateHotkey(HotkeyKind kind, HotKey newKey) async {
+    print('[HotkeyService] Updating ${kind.name} hotkey to $newKey');
     // More reliable to unregister all for this app
     await hotKeyManager.unregisterAll();
-    if (quick) {
-      _quickHotkey = newKey;
-      await _saveHotkey(_quickHotkeyKey, newKey);
-    } else {
-      _currentHotkey = newKey;
-      await _saveHotkey(_hotkeyKey, newKey);
-    }
+    _hotkeys[kind] = newKey;
+    await _saveHotkey(kind, newKey);
 
     // Only register if we're not currently paused
     if (!_isPaused) {
@@ -119,23 +118,17 @@ class HotkeyService {
   }
 
   Future<void> _registerCurrent() async {
-    print('[HotkeyService] Registering: $_currentHotkey / $_quickHotkey');
-    await hotKeyManager.register(
-      _currentHotkey,
-      keyDownHandler: (_) {
-        if (_isPaused) return; // Dart-level guard against in-flight callbacks
-        print('[HotkeyService] Global Hotkey Activated!');
-        _onActivated?.call();
-      },
-    );
-    await hotKeyManager.register(
-      _quickHotkey,
-      keyDownHandler: (_) {
-        if (_isPaused) return;
-        print('[HotkeyService] Quick Hotkey Activated!');
-        _onQuickActivated?.call();
-      },
-    );
+    print('[HotkeyService] Registering: $_hotkeys');
+    for (final kind in HotkeyKind.values) {
+      await hotKeyManager.register(
+        hotkeyOf(kind),
+        keyDownHandler: (_) {
+          if (_isPaused) return; // Dart-level guard against in-flight callbacks
+          print('[HotkeyService] ${kind.name} hotkey activated!');
+          _callbacks[kind]?.call();
+        },
+      );
+    }
   }
 
   Future<void> pause() async {

@@ -19,6 +19,9 @@ class AppConstants {
   static const String stopSoundKey = 'stop_sound';
   static const String recordingStoppedSoundKey = 'recording_stopped_sound';
   static const String pasteFailedSoundKey = 'paste_failed_sound';
+  static const String phrasePickerSoundKey = 'phrase_picker_sound';
+  static const String phrasePickerSoundEnabledKey =
+      'phrase_picker_sound_enabled';
 
   /// 提示音期間主音量的下限（百分比，0 = 不干預）
   static const String minMasterVolumeKey = 'min_master_volume';

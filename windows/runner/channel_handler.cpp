@@ -1,6 +1,7 @@
 #include "channel_handler.h"
 
 #include "overlay_window.h"
+#include "picker_window.h"
 
 #include <windows.h>
 #include <endpointvolume.h>
@@ -13,6 +14,7 @@
 #include <memory>
 #include <string>
 #include <variant>
+#include <vector>
 
 // Keep channels alive for the duration of the app
 static std::shared_ptr<flutter::MethodChannel<flutter::EncodableValue>>
@@ -23,6 +25,8 @@ static std::shared_ptr<flutter::MethodChannel<flutter::EncodableValue>>
     g_overlay_channel;
 static std::shared_ptr<flutter::MethodChannel<flutter::EncodableValue>>
     g_control_channel;
+static std::shared_ptr<flutter::MethodChannel<flutter::EncodableValue>>
+    g_picker_channel;
 
 // ── 背景音樂：開始錄音時暫停 ────────────────────────────────────────────
 //
@@ -197,6 +201,18 @@ static bool IsClass(HWND hwnd, const wchar_t* name) {
   return wcscmp(cls, name) == 0;
 }
 
+// 貼上目標還在不在。浮窗靠這個決定要不要自己收起來。
+//
+// 兩件事都算「不見了」：視窗被關掉或藏起來，以及視窗還在但那個輸入框沒了
+// （關掉分頁、切換到別的檢視都會這樣）。g_paste_focus 本來就可能是 null
+// （焦點在別條執行緒上，WebView2 之類），那種情況只看頂層視窗。
+static bool PasteTargetAlive() {
+  HWND target = g_paste_target;
+  if (!target || !IsWindow(target) || !IsWindowVisible(target)) return false;
+  if (g_paste_focus && !IsWindow(g_paste_focus)) return false;
+  return true;
+}
+
 // 診斷用：貼上目標到底是誰。
 //
 // focus= 那一欄才是重點：像 Visual Studio 這種多面板的程式，頂層視窗永遠是同一個
@@ -224,9 +240,10 @@ static std::string DescribePasteTarget() {
     focus = std::string(buf) + Utf8(focus_cls);
   }
 
-  // 記到的焦點 vs 實際焦點：兩者不一樣就是 RestoreInnerFocus 沒把焦點救回來
+  // 焦點=（熱鍵按下時記到的）vs focus=（現在真正收到按鍵的）：兩者不一樣
+  // 就是 RestoreInnerFocus 沒把焦點救回來
   char head[128] = {};
-  sprintf_s(head, "hwnd=0x%p pid=%lu 記到的焦點=0x%p ",
+  sprintf_s(head, "hwnd=0x%p pid=%lu 焦點=0x%p ",
             reinterpret_cast<void*>(target), pid,
             reinterpret_cast<void*>(g_paste_focus));
   return std::string(head) + "cls=" + Utf8(cls) + " title=\"" + Utf8(title) +
@@ -414,6 +431,70 @@ void SetupChannels(flutter::BinaryMessenger* messenger) {
               OverlaySetAmplitude(*value);
             }
           }
+        }
+        result->Success(nullptr);
+      });
+
+  // ── Picker channel ──────────────────────────────────────────────────────
+  //
+  // 常用詞彙選擇器。Dart 端先 rememberPasteTarget 再 show，使用者選好之後原生端
+  // 回報 "picked"（索引），Dart 端負責把文字貼到剛剛記下的那個視窗。
+  //
+  // 跟錄音藥丸走不同的視窗：這個要收鍵盤，必須搶焦點（見 picker_window.cpp）。
+  g_picker_channel =
+      std::make_shared<flutter::MethodChannel<flutter::EncodableValue>>(
+          messenger, "com.zerotype.app/picker",
+          &flutter::StandardMethodCodec::GetInstance());
+
+  PickerSetCallbacks(
+      [](int index) {
+        if (g_picker_channel) {
+          g_picker_channel->InvokeMethod(
+              "picked", std::make_unique<flutter::EncodableValue>(index));
+        }
+      },
+      [](const char* reason) {
+        if (g_picker_channel) {
+          g_picker_channel->InvokeMethod(
+              "cancelled", std::make_unique<flutter::EncodableValue>(
+                               std::string(reason ? reason : "")));
+        }
+      });
+
+  PickerSetTargetAliveCheck(&PasteTargetAlive);
+
+  // 視窗先建好。留到第一次按熱鍵才建，那幾毫秒剛好卡在熱鍵給的前景權限空窗期，
+  // 實測第一次按會看不到浮窗。
+  PickerPrepare();
+
+  g_picker_channel->SetMethodCallHandler(
+      [](const flutter::MethodCall<flutter::EncodableValue>& call,
+         std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>>
+             result) {
+        if (call.method_name() == "show") {
+          std::vector<std::string> items;
+          if (const auto* args =
+                  std::get_if<flutter::EncodableMap>(call.arguments())) {
+            const auto it = args->find(flutter::EncodableValue("items"));
+            if (it != args->end()) {
+              if (const auto* list =
+                      std::get_if<flutter::EncodableList>(&it->second)) {
+                for (const auto& value : *list) {
+                  if (const auto* text = std::get_if<std::string>(&value)) {
+                    items.push_back(*text);
+                  }
+                }
+              }
+            }
+          }
+          result->Success(flutter::EncodableValue(PickerShow(items)));
+          return;
+        } else if (call.method_name() == "refocus") {
+          result->Success(
+              flutter::EncodableValue(PickerRefocusIfUnfocused()));
+          return;
+        } else if (call.method_name() == "hide") {
+          PickerHide();
         }
         result->Success(nullptr);
       });
