@@ -1,0 +1,727 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  html { color-scheme: light dark; }
+  body { margin: 0; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+</style>
+<title>ZeroType 運作解剖</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+</head>
+<body>
+<style>
+  :root {
+    --ground: #F4F5F2;
+    --surface: #FFFFFF;
+    --ink: #1A1D1B;
+    --muted: #5E6763;
+    --hair: #D8DCD6;
+    --accent: #12736B;
+    --accent-soft: #E2EFEC;
+    --native: #9C6B15;
+    --native-soft: #F5EBD8;
+    --paper: #FCFCFA;
+    --paper-ink: #24272A;
+    --paper-hair: #DFE2DC;
+
+    --serif: "Noto Serif TC", "PMingLiU", Georgia, serif;
+    --sans: "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+    --mono: "JetBrains Mono", "Cascadia Mono", Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #14171A;
+      --surface: #1C2023;
+      --ink: #E6EAE7;
+      --muted: #9AA4A0;
+      --hair: #2C3236;
+      --accent: #4FBFB2;
+      --accent-soft: #17322F;
+      --native: #D9A441;
+      --native-soft: #332916;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #14171A;
+    --surface: #1C2023;
+    --ink: #E6EAE7;
+    --muted: #9AA4A0;
+    --hair: #2C3236;
+    --accent: #4FBFB2;
+    --accent-soft: #17322F;
+    --native: #D9A441;
+    --native-soft: #332916;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.8;
+    margin: 0;
+    padding: 0 20px 96px;
+  }
+
+  .wrap {
+    max-width: 820px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 56px;
+  }
+
+  header.masthead {
+    padding-top: 64px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-weight: 700;
+    font-size: clamp(34px, 5.4vw, 50px);
+    line-height: 1.25;
+    letter-spacing: 0.01em;
+    margin: 0;
+    text-wrap: balance;
+  }
+
+  .lede {
+    font-size: 18px;
+    color: var(--muted);
+    margin: 0;
+    max-width: 62ch;
+  }
+
+  .facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px 10px;
+    margin-top: 6px;
+  }
+
+  .fact {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--muted);
+    border: 1px solid var(--hair);
+    border-radius: 2px;
+    padding: 3px 9px;
+  }
+
+  section {
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+  }
+
+  h2 {
+    font-family: var(--serif);
+    font-size: 26px;
+    font-weight: 600;
+    margin: 0;
+    padding-bottom: 10px;
+    border-bottom: 2px solid var(--ink);
+    text-wrap: balance;
+  }
+
+  h3 {
+    font-family: var(--sans);
+    font-size: 17px;
+    font-weight: 700;
+    margin: 0;
+  }
+
+  p { margin: 0; max-width: 66ch; }
+
+  a { color: var(--accent); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: var(--accent-soft);
+    color: var(--ink);
+    padding: 1px 5px;
+    border-radius: 2px;
+  }
+
+  /* 圖紙面板：兩個主題都用同一張淺色紙，確保 mermaid 的文字一定讀得到 */
+  .sheet {
+    background: var(--paper);
+    border: 1px solid var(--paper-hair);
+    border-radius: 3px;
+    padding: 20px 16px;
+    overflow-x: auto;
+  }
+
+  .sheet .mmd {
+    display: block;
+    color: var(--paper-ink);
+  }
+
+  .sheet .mmd svg {
+    display: block;
+    max-width: none;
+    height: auto;
+  }
+
+  .sheet svg.layers {
+    display: block;
+    width: 100%;
+    max-width: 760px;
+    height: auto;
+    margin: 0 auto;
+  }
+
+  svg.layers .cap {
+    font-family: var(--sans);
+    font-size: 15px;
+    font-weight: 700;
+    fill: #4A544F;
+  }
+
+  svg.layers .t1 {
+    font-family: var(--sans);
+    font-size: 14.5px;
+    font-weight: 700;
+    fill: #1E2422;
+  }
+
+  svg.layers .t2 {
+    font-family: var(--sans);
+    font-size: 12.5px;
+    fill: #55605B;
+  }
+
+  svg.layers .n.dart rect { fill: #E4F0ED; stroke: #12736B; }
+  svg.layers .n.native rect { fill: #F7EEDC; stroke: #9C6B15; }
+
+  svg.layers .edge {
+    fill: none;
+    stroke: #6E7873;
+    stroke-width: 1.4;
+  }
+
+  svg.layers .edge.dash { stroke-dasharray: 5 4; stroke: #9C6B15; }
+
+  svg.layers .chip rect { fill: #FCFCFA; stroke: none; }
+
+  svg.layers .chip text {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    fill: #4A544F;
+  }
+
+  .sheet .mmd-fallback {
+    font-family: var(--mono);
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--paper-ink);
+    white-space: pre;
+    margin: 0;
+  }
+
+  .sheet-cap {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    display: block;
+    margin-top: -6px;
+  }
+
+  .steps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    counter-reset: step;
+  }
+
+  .steps li {
+    display: grid;
+    grid-template-columns: 30px 1fr;
+    gap: 14px;
+    align-items: baseline;
+  }
+
+  .steps li::before {
+    counter-increment: step;
+    content: counter(step, decimal-leading-zero);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 0.04em;
+  }
+
+  .steps p { margin: 0; max-width: 62ch; }
+  .steps b { font-weight: 700; }
+  .steps span { color: var(--muted); }
+
+  .traits {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border-top: 1px solid var(--hair);
+  }
+
+  .trait {
+    display: grid;
+    grid-template-columns: 190px 1fr;
+    gap: 8px 26px;
+    padding: 20px 0;
+    border-bottom: 1px solid var(--hair);
+    align-items: start;
+  }
+
+  .trait h3 { line-height: 1.5; }
+
+  .trait .body {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .here {
+    font-size: 14.5px;
+    line-height: 1.7;
+    color: var(--muted);
+    border-left: 2px solid var(--accent);
+    padding-left: 12px;
+  }
+
+  .here::before {
+    content: "在 ZeroType 裡";
+    display: block;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+    margin-bottom: 2px;
+  }
+
+  .cost {
+    background: var(--surface);
+    border: 1px solid var(--hair);
+    border-radius: 3px;
+    padding: 22px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .cost ul {
+    margin: 0;
+    padding-left: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    color: var(--muted);
+  }
+
+  .cost strong { color: var(--ink); }
+
+  .native-tag {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    color: var(--native);
+    background: var(--native-soft);
+    border-radius: 2px;
+    padding: 1px 6px;
+  }
+
+  footer {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+    border-top: 1px solid var(--hair);
+    padding-top: 16px;
+  }
+
+  @media (max-width: 620px) {
+    .trait { grid-template-columns: 1fr; }
+    body { line-height: 1.75; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation: none !important; transition: none !important; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">Flutter · Windows Desktop</div>
+    <h1>ZeroType 運作解剖</h1>
+    <p class="lede">一次語音輸入從按下熱鍵到文字落在游標處，中間經過哪些關卡。以及這個專案用到了 Flutter 的哪些特性。</p>
+    <div class="facts">
+      <span class="fact">45 個 Dart 檔</span>
+      <span class="fact">5 條 MethodChannel</span>
+      <span class="fact">3 組全域熱鍵</span>
+      <span class="fact">2 段 API 呼叫</span>
+      <span class="fact">Windows only</span>
+    </div>
+  </header>
+
+  <section>
+    <h2>一次輸入的完整流程</h2>
+    <p>整條路徑由 <code>ZeroTypeController</code> 驅動。它是一顆 Riverpod <code>Notifier</code>，全部的分支都收斂在同一個狀態物件上。</p>
+    <div class="sheet">
+<div class="mmd" id="d1"></div>
+<script type="text/mermaid-src" data-target="d1">
+flowchart TD
+  A["按下熱鍵<br/>Alt+Z 全局 / Alt+X 精簡"] --> B["先記住貼上目標視窗<br/>rememberPasteTarget"]
+  B --> C{"模型設定完整？"}
+  C -->|否| X1["紀錄頁報錯 + 取消音"]
+  C -->|是| D{"輔助使用與麥克風權限"}
+  D -->|缺一| X1
+  D -->|都通過| E["開麥克風 → warmingUp<br/>等藍牙 HFP 協商"]
+  E --> F["onCaptureStart：播提示音<br/>狀態轉 recording"]
+  F --> G["音波 overlay 即時吃 amplitude"]
+  G --> H{"停止條件"}
+  H -->|再按一次熱鍵| I
+  H -->|精簡模式：安靜滿 1.5 秒| I
+  H -->|逾時保險絲| I
+  H -->|按下 Esc| X2["cancel：刪檔，回到 idle"]
+  I["stopRecording：寫出 16kHz WAV"] --> J{"動態範圍 p90÷p10 ≥ 4？"}
+  J -->|否| X3["不送辨識<br/>紀錄頁說明是被哪一條擋的"]
+  J -->|是| K["第一段：音訊 → 逐字稿<br/>只給最小指令"]
+  K --> L{"服務商是 whisper？"}
+  L -->|是| N
+  L -->|否| M["第二段：純文字 → 套規則、字典、格式"]
+  M --> N["程式收尾：砍尾端底線、短句去句號"]
+  N --> O["寫入歷史紀錄與成本統計"]
+  O --> P["暫存剪貼簿 → 模擬 Ctrl+V → 還原剪貼簿"]
+  P --> Q{"貼上成功？"}
+  Q -->|是| R["回到 idle"]
+  Q -->|否| S["失敗音；文字留在剪貼簿"]
+</script>
+    </div>
+    <span class="sheet-cap">圖 1　lib/core/controllers/zero_type_controller.dart</span>
+
+    <ol class="steps">
+      <li><p><b>順序不能換。</b><span>貼上目標必須在任何視窗操作之前記下來。晚一步，記到的就不是使用者原本那個視窗。</span></p></li>
+      <li><p><b>只有噪音就不送。</b><span>空錄音送給 AI，它不會回「沒聽到」，而是編一整段內容出來。門檻看動態範圍，不看音量。</span></p></li>
+      <li><p><b>兩段式呼叫。</b><span>規則、範例與字典跟音訊放在同一個 context，模型會照抄。所以音訊那段只給一句指令，其餘全部移到第二段純文字。</span></p></li>
+      <li><p><b>剪貼簿是借用的。</b><span>貼上後還原成使用者原本複製的東西。貼上失敗時不還原，那時剪貼簿是唯一的救援手段。</span></p></li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>狀態機</h2>
+    <p>八個狀態都在 <code>ZeroTypeStatus</code>。控制器覆寫了 <code>state</code> 的 setter，把系統匣圖示與 Esc 熱鍵的武裝旗標掛在狀態轉換上，而不是掛在畫面上。視窗隱藏時畫面不會重繪，掛在畫面上的東西就不會跑。</p>
+    <div class="sheet">
+<div class="mmd" id="d2"></div>
+<script type="text/mermaid-src" data-target="d2">
+flowchart TD
+  S(["啟動"]) --> IDLE["idle｜閒置"]
+  IDLE -->|"熱鍵（有設等待麥克風）"| WARM["warmingUp｜準備中"]
+  IDLE -->|"熱鍵（不等待）"| REC["recording｜錄音中"]
+  WARM -->|"onCaptureStart"| REC
+  WARM -->|"麥克風始終沒訊號"| CAN
+  WARM -->|"按下 Esc"| CAN
+  REC -->|"按下 Esc"| CAN["cancelling｜取消中"]
+  REC -->|"停止"| SAV["saving｜擷取中"]
+  SAV -->|"只有噪音"| BACK
+  SAV -->|"有人聲"| TRA["transcribing｜辨識中"]
+  TRA -->|"API 失敗"| BACK
+  TRA -->|"拿到文字"| DONE["done｜輸出"]
+  DONE -->|"貼上完成"| BACK["回到 idle"]
+  CAN --> BACK
+</script>
+    </div>
+    <span class="sheet-cap">圖 2　lib/core/state/zero_type_state.dart</span>
+  </section>
+
+  <section>
+    <h2>分層：Dart 那一半與 C++ 那一半</h2>
+    <p>這個 app 有相當份量的程式碼不在 Flutter 裡。畫面、狀態與 API 呼叫在 Dart；搶焦點的浮窗、鍵盤注入與低階鍵盤鉤子在 <code>windows/runner</code> 的 C++。兩邊用 MethodChannel 講話，另有一條 <code>dart:ffi</code> 直接呼叫 COM。</p>
+    <div class="sheet">
+<svg class="layers" viewBox="0 0 760 600" role="img" aria-label="ZeroType 的 Dart 層與 C++ 層，以及兩者之間的 MethodChannel 與 dart:ffi">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6E7873"></path>
+    </marker>
+  </defs>
+
+  <!-- Dart 層 -->
+  <rect x="40" y="12" width="680" height="252" rx="6" fill="#F3F5F2" stroke="#C6CDC7"></rect>
+  <text x="380" y="38" class="cap" text-anchor="middle">Dart / Flutter</text>
+
+  <g class="n dart">
+    <rect x="280" y="48" width="200" height="54" rx="4"></rect>
+    <text x="380" y="70" class="t1" text-anchor="middle">MainShell</text>
+    <text x="380" y="89" class="t2" text-anchor="middle">七個分頁的 UI</text>
+
+    <rect x="280" y="122" width="200" height="54" rx="4"></rect>
+    <text x="380" y="144" class="t1" text-anchor="middle">ZeroTypeController</text>
+    <text x="380" y="163" class="t2" text-anchor="middle">Riverpod Notifier</text>
+
+    <rect x="50" y="196" width="208" height="56" rx="4"></rect>
+    <text x="154" y="219" class="t1" text-anchor="middle">RecordingService</text>
+    <text x="154" y="238" class="t2" text-anchor="middle">PCM16 串流、噪音判斷</text>
+
+    <rect x="272" y="196" width="208" height="56" rx="4"></rect>
+    <text x="376" y="219" class="t1" text-anchor="middle">SpeechRecognitionService</text>
+    <text x="376" y="238" class="t2" text-anchor="middle">OpenAI／Gemini／OpenRouter</text>
+
+    <rect x="494" y="196" width="208" height="56" rx="4"></rect>
+    <text x="598" y="219" class="t1" text-anchor="middle">Repositories</text>
+    <text x="598" y="238" class="t2" text-anchor="middle">SharedPreferences、JSON 檔</text>
+  </g>
+
+  <g class="edge">
+    <path d="M380,102 L380,118" marker-end="url(#ar)"></path>
+    <path d="M380,176 L380,186 L154,186 L154,192" marker-end="url(#ar)"></path>
+    <path d="M380,176 L380,192" marker-end="url(#ar)"></path>
+    <path d="M380,176 L380,186 L598,186 L598,192" marker-end="url(#ar)"></path>
+  </g>
+
+  <!-- 跨層 -->
+  <g class="edge">
+    <path d="M128,264 L128,392" marker-end="url(#ar)"></path>
+    <path d="M296,264 L296,392" marker-end="url(#ar)"></path>
+    <path d="M464,264 L464,392" marker-end="url(#ar)"></path>
+    <path d="M632,392 L632,268" marker-end="url(#ar)"></path>
+  </g>
+  <g class="chip">
+    <rect x="82" y="316" width="92" height="24" rx="3"></rect>
+    <text x="128" y="333" text-anchor="middle">overlay</text>
+    <rect x="252" y="316" width="88" height="24" rx="3"></rect>
+    <text x="296" y="333" text-anchor="middle">picker</text>
+    <rect x="412" y="316" width="104" height="24" rx="3"></rect>
+    <text x="464" y="333" text-anchor="middle">keyboard</text>
+    <rect x="558" y="316" width="148" height="24" rx="3"></rect>
+    <text x="632" y="333" text-anchor="middle">control（反向呼叫）</text>
+  </g>
+
+  <!-- C++ 層 -->
+  <rect x="40" y="356" width="680" height="120" rx="6" fill="#F3F5F2" stroke="#C6CDC7"></rect>
+  <text x="380" y="382" class="cap" text-anchor="middle">windows/runner（C++）</text>
+
+  <g class="n native">
+    <rect x="50" y="392" width="156" height="68" rx="4"></rect>
+    <text x="128" y="422" class="t1" text-anchor="middle">overlay_window</text>
+    <text x="128" y="441" class="t2" text-anchor="middle">音波浮窗</text>
+
+    <rect x="218" y="392" width="156" height="68" rx="4"></rect>
+    <text x="296" y="422" class="t1" text-anchor="middle">picker_window</text>
+    <text x="296" y="441" class="t2" text-anchor="middle">常用詞彙選單</text>
+
+    <rect x="386" y="392" width="156" height="68" rx="4"></rect>
+    <text x="464" y="415" class="t1" text-anchor="middle">keyboard</text>
+    <text x="464" y="433" class="t2" text-anchor="middle">記住目標視窗</text>
+    <text x="464" y="450" class="t2" text-anchor="middle">送出 Ctrl+V</text>
+
+    <rect x="554" y="392" width="156" height="68" rx="4"></rect>
+    <text x="632" y="422" class="t1" text-anchor="middle">低階鍵盤鉤子</text>
+    <text x="632" y="441" class="t2" text-anchor="middle">偵測 Esc</text>
+  </g>
+
+  <!-- dart:ffi -->
+  <path class="edge dash" d="M50,224 L22,224 L22,549 L36,549" marker-end="url(#ar)"></path>
+  <g class="n native">
+    <rect x="40" y="520" width="300" height="58" rx="4"></rect>
+    <text x="190" y="544" class="t1" text-anchor="middle">IMMDeviceEnumerator（COM）</text>
+    <text x="190" y="563" class="t2" text-anchor="middle">列舉錄音裝置</text>
+  </g>
+  <g class="chip">
+    <rect x="46" y="484" width="132" height="24" rx="3"></rect>
+    <text x="112" y="501" text-anchor="middle">dart:ffi 直接呼叫</text>
+  </g>
+</svg>
+    </div>
+    <span class="sheet-cap">圖 3　lib/ 與 windows/runner/（permission 那條未畫）</span>
+  </section>
+
+  <section>
+    <h2>Flutter 的特性，對照這個專案</h2>
+    <p>Flutter 是 Google 的 UI 框架，語言是 Dart。以下每一條先講框架本身，再指出它在 ZeroType 的哪個位置。</p>
+
+    <div class="traits">
+
+      <div class="trait">
+        <h3>自繪 UI，不是包網頁</h3>
+        <div class="body">
+          <p>Flutter 不用系統原生控制項，也不用 WebView。它自己在一張畫布上把每一個像素畫出來。所以同一份程式碼在各平台長得一樣，也不受系統控制項的限制。</p>
+          <p class="here">標題列被關掉（<code>TitleBarStyle.hidden</code>），最小化與關閉按鈕是自己畫的 widget。</p>
+        </div>
+      </div>
+
+      <div class="trait">
+        <h3>宣告式 UI</h3>
+        <div class="body">
+          <p>你不去改畫面，你描述「這個狀態下畫面長什麼樣」。狀態一變，框架重建那棵 widget 樹，並且只把真正變動的部分畫出來。</p>
+          <p class="here">錄音音量 <code>amplitude</code> 每次更新都寫進狀態物件。畫面自己跟著動，沒有一行「把音波條設成 0.7」的程式碼。</p>
+        </div>
+      </div>
+
+      <div class="trait">
+        <h3>狀態管理靠套件</h3>
+        <div class="body">
+          <p>Flutter 只提供最基本的 <code>setState</code>。跨畫面的狀態要自己選方案。Riverpod 是常見的一種：狀態放在 provider，需要的 widget 自己去 watch。</p>
+          <p class="here">熱鍵在任何頁面按下都有效，因為 <code>zeroTypeControllerProvider</code> 不屬於任何一個頁面。歷史頁靠 <code>ref.invalidate</code> 重讀。</p>
+        </div>
+      </div>
+
+      <div class="trait">
+        <h3>單執行緒事件迴圈</h3>
+        <div class="body">
+          <p>Dart 預設只有一條執行緒。<code>async</code> 與 <code>await</code> 不開新執行緒，只是把工作排進事件迴圈。等 API 回應時畫面不會卡，但一段很花時間的純運算會卡。要真的平行就得開 Isolate。</p>
+          <p class="here">API 呼叫、音效播放與 overlay 更新全都用 <code>unawaited</code> 放行，不擋住錄音啟動。噪音分析在錄音結束後才做，量夠小，不必開 Isolate。</p>
+        </div>
+      </div>
+
+      <div class="trait">
+        <h3>Platform Channel<span class="native-tag">原生橋接</span></h3>
+        <div class="body">
+          <p>Dart 做不到的事，交給平台原生程式碼。兩邊用具名的 channel 互傳訊息，可以雙向呼叫。</p>
+          <p class="here">五條 channel：overlay、keyboard、permission、picker、control。<code>control</code> 是反向的——C++ 的鍵盤鉤子偵測到 Esc，主動呼叫 Dart 的 <code>cancel</code>。</p>
+        </div>
+      </div>
+
+      <div class="trait">
+        <h3>dart:ffi<span class="native-tag">原生橋接</span></h3>
+        <div class="body">
+          <p>另一條路。FFI 讓 Dart 直接呼叫 C 函式，不必寫任何橋接程式碼，也不必經過 channel。<code>win32</code> 這個套件就是整包 Windows API 的 FFI 綁定。</p>
+          <p class="here">列舉錄音裝置直接在 Dart 呼 COM。要小心的是記憶體：<code>IMMDevice</code> 這類物件自帶 Finalizer，再手動釋放一次會在之後某次 GC 讓程序無聲崩掉。</p>
+        </div>
+      </div>
+
+      <div class="trait">
+        <h3>桌面版的 runner 是真的原生專案</h3>
+        <div class="body">
+          <p>Flutter 桌面 app 的外殼是一個可以自己改的 C++ 專案。Flutter 只是被嵌進其中一個視窗。你可以在旁邊自己開別的視窗。</p>
+          <p class="here">音波浮窗與常用詞彙選單都是手寫的 Win32 視窗，不是 Flutter widget。它們需要「不搶焦點」與「置頂」，這是 Flutter 視窗給不了的。</p>
+        </div>
+      </div>
+
+      <div class="trait">
+        <h3>Hot reload</h3>
+        <div class="body">
+          <p>改完 Dart 存檔，畫面即時更新，狀態還在。這是開發期最有感的一項。但它只涵蓋 Dart——改到 <code>windows/runner</code> 的 C++ 就要整包重建。</p>
+          <p class="here">UI 調整很快。動到 overlay 或鍵盤注入就得重跑 <code>flutter build windows</code>。</p>
+        </div>
+      </div>
+
+      <div class="trait">
+        <h3>套件生態</h3>
+        <div class="body">
+          <p>pub.dev 上的套件補齊了框架不做的事。桌面相關的套件多半由社群維護，成熟度不一。</p>
+          <p class="here"><code>record</code> 錄音、<code>hotkey_manager</code> 全域熱鍵、<code>window_manager</code> 視窗、<code>tray_manager</code> 系統匣、<code>dio</code> HTTP、<code>shared_preferences</code> 設定。</p>
+        </div>
+      </div>
+
+      <div class="trait">
+        <h3>AOT 編譯</h3>
+        <div class="body">
+          <p>Release build 把 Dart 編成原生機器碼，不帶直譯器。啟動快，執行速度接近原生。代價是輸出資料夾比較大，而且沒有安裝檔的概念——build 完就是更新完。</p>
+          <p class="here">要確認執行的是不是最新版，比對的是 <code>app.so</code> 與 <code>flutter_assets</code> 的時間戳，不是 <code>zero_type.exe</code>。</p>
+        </div>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <h2>抽象漏出來的地方</h2>
+    <div class="cost">
+      <p>「一份程式碼到處跑」在桌面上是有代價的。這個專案付過的：</p>
+      <ul>
+        <li><strong>工作列圖示換色做不到。</strong>可以把圖示設進去，但 shell 不重畫。快取、DestroyIcon、tray_manager 的順序都排除了，剩下的路只有 ITaskbarList3。</li>
+        <li><strong>剪貼簿只讀得到純文字。</strong>Flutter 的 <code>Clipboard</code> 沒有其他格式。使用者原本複製的是圖片或檔案就救不回來。要全格式得回到 C++ 用 EnumClipboardFormats。</li>
+        <li><strong>單獨一顆 Win 鍵當熱鍵是死路。</strong>低階鉤子會讓外接鍵盤的 c、h 變成 Win+C、Win+H。熱鍵一律要帶非修飾主鍵。</li>
+        <li><strong>全域 Esc 不能用 RegisterHotKey。</strong>它會獨佔按鍵，而且熱鍵套件會丟出沒人接的例外，整個程式炸掉。改用被動的 <code>WH_KEYBOARD_LL</code> 鉤子加旗標。</li>
+        <li><strong>平台差異寫死在程式裡。</strong><code>macos/</code> 已經移除。這是 Windows-only 的 app，跨平台在這裡只剩理論值。</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>ZeroType · fork of nick1ee/ZeroType · 內容取自 2026-09-07 的 master</footer>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/mermaid/11.15.0/mermaid.min.js"></script>
+<script>
+  (function () {
+    var sources = document.querySelectorAll('script[type="text/mermaid-src"]');
+
+    function fallback() {
+      // mermaid 載不進來時至少把圖的原始碼顯示出來，不要留一塊空白
+      sources.forEach(function (node) {
+        var box = document.getElementById(node.dataset.target);
+        if (box && !box.innerHTML.trim()) {
+          var pre = document.createElement('pre');
+          pre.className = 'mmd-fallback';
+          pre.textContent = node.textContent.trim();
+          box.appendChild(pre);
+        }
+      });
+    }
+
+    if (typeof mermaid === 'undefined') { fallback(); return; }
+
+    mermaid.initialize({
+      startOnLoad: false,
+      theme: 'base',
+      fontFamily: '"Noto Sans TC", "Microsoft JhengHei", sans-serif',
+      themeVariables: {
+        fontFamily: '"Noto Sans TC", "Microsoft JhengHei", sans-serif',
+        fontSize: '19px',
+        background: '#FCFCFA',
+        primaryColor: '#E4F0ED',
+        primaryTextColor: '#1E2422',
+        primaryBorderColor: '#12736B',
+        secondaryColor: '#F5EBD8',
+        tertiaryColor: '#F1F3F0',
+        lineColor: '#6E7873',
+        textColor: '#1E2422',
+        clusterBkg: '#F3F5F2',
+        clusterBorder: '#C6CDC7',
+        edgeLabelBackground: '#FCFCFA',
+        nodeBorder: '#12736B'
+      },
+      flowchart: {
+        htmlLabels: true,
+        useMaxWidth: false,
+        nodeSpacing: 46,
+        rankSpacing: 66,
+        padding: 12,
+        curve: 'basis'
+      }
+    });
+
+    Promise.all(Array.prototype.map.call(sources, function (node, i) {
+      return mermaid.render('mmd-svg-' + i, node.textContent.trim())
+        .then(function (out) {
+          document.getElementById(node.dataset.target).innerHTML = out.svg;
+        });
+    })).catch(fallback);
+  })();
+</script>
+
+</body>
+</html>

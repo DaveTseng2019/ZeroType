@@ -1,0 +1,135 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="600" viewBox="0 0 760 600" role="img" aria-label="ZeroType 的 Dart 層與 C++ 層，以及兩者之間的 MethodChannel 與 dart:ffi">
+  <style>
+  .cap {
+    font-family: "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+    font-size: 15px;
+    font-weight: 700;
+    fill: #4A544F;
+  }
+
+  .t1 {
+    font-family: "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+    font-size: 14.5px;
+    font-weight: 700;
+    fill: #1E2422;
+  }
+
+  .t2 {
+    font-family: "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+    font-size: 12.5px;
+    fill: #55605B;
+  }
+
+  .n.dart rect { fill: #E4F0ED; stroke: #12736B; }
+  .n.native rect { fill: #F7EEDC; stroke: #9C6B15; }
+
+  .edge {
+    fill: none;
+    stroke: #6E7873;
+    stroke-width: 1.4;
+  }
+
+  .edge.dash { stroke-dasharray: 5 4; stroke: #9C6B15; }
+
+  .chip rect { fill: #FCFCFA; stroke: none; }
+
+  .chip text {
+    font-family: Consolas, "Cascadia Mono", monospace;
+    font-size: 12.5px;
+    fill: #4A544F;
+  }
+  </style>
+  <rect width="760" height="600" fill="#FCFCFA"></rect>
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6E7873"></path>
+    </marker>
+  </defs>
+
+  <!-- Dart 層 -->
+  <rect x="40" y="12" width="680" height="252" rx="6" fill="#F3F5F2" stroke="#C6CDC7"></rect>
+  <text x="380" y="38" class="cap" text-anchor="middle">Dart / Flutter</text>
+
+  <g class="n dart">
+    <rect x="280" y="48" width="200" height="54" rx="4"></rect>
+    <text x="380" y="70" class="t1" text-anchor="middle">MainShell</text>
+    <text x="380" y="89" class="t2" text-anchor="middle">七個分頁的 UI</text>
+
+    <rect x="280" y="122" width="200" height="54" rx="4"></rect>
+    <text x="380" y="144" class="t1" text-anchor="middle">ZeroTypeController</text>
+    <text x="380" y="163" class="t2" text-anchor="middle">Riverpod Notifier</text>
+
+    <rect x="50" y="196" width="208" height="56" rx="4"></rect>
+    <text x="154" y="219" class="t1" text-anchor="middle">RecordingService</text>
+    <text x="154" y="238" class="t2" text-anchor="middle">PCM16 串流、噪音判斷</text>
+
+    <rect x="272" y="196" width="208" height="56" rx="4"></rect>
+    <text x="376" y="219" class="t1" text-anchor="middle">SpeechRecognitionService</text>
+    <text x="376" y="238" class="t2" text-anchor="middle">OpenAI／Gemini／OpenRouter</text>
+
+    <rect x="494" y="196" width="208" height="56" rx="4"></rect>
+    <text x="598" y="219" class="t1" text-anchor="middle">Repositories</text>
+    <text x="598" y="238" class="t2" text-anchor="middle">SharedPreferences、JSON 檔</text>
+  </g>
+
+  <g class="edge">
+    <path d="M380,102 L380,118" marker-end="url(#ar)"></path>
+    <path d="M380,176 L380,186 L154,186 L154,192" marker-end="url(#ar)"></path>
+    <path d="M380,176 L380,192" marker-end="url(#ar)"></path>
+    <path d="M380,176 L380,186 L598,186 L598,192" marker-end="url(#ar)"></path>
+  </g>
+
+  <!-- 跨層 -->
+  <g class="edge">
+    <path d="M128,264 L128,392" marker-end="url(#ar)"></path>
+    <path d="M296,264 L296,392" marker-end="url(#ar)"></path>
+    <path d="M464,264 L464,392" marker-end="url(#ar)"></path>
+    <path d="M632,392 L632,268" marker-end="url(#ar)"></path>
+  </g>
+  <g class="chip">
+    <rect x="82" y="316" width="92" height="24" rx="3"></rect>
+    <text x="128" y="333" text-anchor="middle">overlay</text>
+    <rect x="252" y="316" width="88" height="24" rx="3"></rect>
+    <text x="296" y="333" text-anchor="middle">picker</text>
+    <rect x="412" y="316" width="104" height="24" rx="3"></rect>
+    <text x="464" y="333" text-anchor="middle">keyboard</text>
+    <rect x="558" y="316" width="148" height="24" rx="3"></rect>
+    <text x="632" y="333" text-anchor="middle">control（反向呼叫）</text>
+  </g>
+
+  <!-- C++ 層 -->
+  <rect x="40" y="356" width="680" height="120" rx="6" fill="#F3F5F2" stroke="#C6CDC7"></rect>
+  <text x="380" y="382" class="cap" text-anchor="middle">windows/runner（C++）</text>
+
+  <g class="n native">
+    <rect x="50" y="392" width="156" height="68" rx="4"></rect>
+    <text x="128" y="422" class="t1" text-anchor="middle">overlay_window</text>
+    <text x="128" y="441" class="t2" text-anchor="middle">音波浮窗</text>
+
+    <rect x="218" y="392" width="156" height="68" rx="4"></rect>
+    <text x="296" y="422" class="t1" text-anchor="middle">picker_window</text>
+    <text x="296" y="441" class="t2" text-anchor="middle">常用詞彙選單</text>
+
+    <rect x="386" y="392" width="156" height="68" rx="4"></rect>
+    <text x="464" y="415" class="t1" text-anchor="middle">keyboard</text>
+    <text x="464" y="433" class="t2" text-anchor="middle">記住目標視窗</text>
+    <text x="464" y="450" class="t2" text-anchor="middle">送出 Ctrl+V</text>
+
+    <rect x="554" y="392" width="156" height="68" rx="4"></rect>
+    <text x="632" y="422" class="t1" text-anchor="middle">低階鍵盤鉤子</text>
+    <text x="632" y="441" class="t2" text-anchor="middle">偵測 Esc</text>
+  </g>
+
+  <!-- dart:ffi -->
+  <path class="edge dash" d="M50,224 L22,224 L22,549 L36,549" marker-end="url(#ar)"></path>
+  <g class="n native">
+    <rect x="40" y="520" width="300" height="58" rx="4"></rect>
+    <text x="190" y="544" class="t1" text-anchor="middle">IMMDeviceEnumerator（COM）</text>
+    <text x="190" y="563" class="t2" text-anchor="middle">列舉錄音裝置</text>
+  </g>
+  <g class="chip">
+    <rect x="46" y="484" width="132" height="24" rx="3"></rect>
+    <text x="112" y="501" text-anchor="middle">dart:ffi 直接呼叫</text>
+  </g>
+</svg>
