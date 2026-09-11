@@ -10,9 +10,13 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:win32/win32.dart';
 import 'package:zero_type/core/constants/app_constants.dart';
 
-/// 音效播完至少要有這麼長，太短的系統音效（例如 Speech On.wav 只有一百多毫秒）
-/// 聽起來像沒放到，用重播頂到這個長度。
-const Duration kMinSoundDuration = Duration(milliseconds: 900);
+/// 音效播完至少要有這麼長，太短的系統音效聽起來像沒放到，用重播頂到這個長度。
+///
+/// 800ms 這個值是被開始提示音夾出來的：門檻以上只播一次，而開始提示音每多播
+/// 一次，[startSoundPlaybackDuration] 就多一份，錄音開頭要跟著多切掉一份
+/// （見 recording_service 的 trimLeadingPcm）。預設的 Speech On.wav 實測 836ms，
+/// 訂 800ms 讓它只播一次；再低就會有真的太短的音效變成只播一次而聽不清楚。
+const Duration kMinSoundDuration = Duration(milliseconds: 800);
 
 /// 從 WAV 檔案內容算出播放時長。走訪 chunk 找 'fmt ' 和 'data'，不能假設
 /// 固定 offset —— 有些系統音效檔在中間插了額外 chunk（如 LIST）。
@@ -122,6 +126,26 @@ const Map<String, String> kWindowsSoundLabels = {
   r'C:\Windows\Media\Windows Message Nudge.wav': 'Message Nudge',
 };
 
+/// 設定值（可能是 .wav 路徑，也可能是殘留的 macOS 路徑）對應到實際的 Windows
+/// 音檔；找不到對應或檔案不存在回 null。
+String? windowsWavPathFor(String path) {
+  final wavPath =
+      path.toLowerCase().endsWith('.wav') ? path : kWindowsSounds[path];
+  if (wavPath == null || !File(wavPath).existsSync()) return null;
+  return wavPath;
+}
+
+/// 設定值對應到的音檔長度；路徑無效或解析失敗回 null。
+Duration? wavDurationOf(String path) {
+  final wavPath = windowsWavPathFor(path);
+  if (wavPath == null) return null;
+  try {
+    return wavDuration(File(wavPath).readAsBytesSync());
+  } catch (_) {
+    return null;
+  }
+}
+
 const String _iidAudioEndpointVolume = '{5CDF2C82-841E-4546-9722-0CF74078229A}';
 
 /// 系統主音量。win32 5.15 沒有 IAudioEndpointVolume 的綁定，這裡只手接出用得到的
@@ -196,6 +220,17 @@ class SoundService {
     if (!soundEnabled) return;
     // _playWindows 會把殘留的 macOS 路徑對應成內建提示音
     await _play(startSoundPath);
+  }
+
+  /// 開始提示音實際會佔用的播放時間（檔長 × 重播次數，見 [repeatCountFor]）。
+  /// 外放時這段會被麥克風錄進去，錄音端要據此把開頭切掉。
+  /// 音效關閉、非 Windows、檔案不存在或長度解析失敗都回 [Duration.zero]
+  /// —— 猜錯的下限是「不切」，寧可留下提示音也不要吃掉使用者講的話。
+  Duration get startSoundPlaybackDuration {
+    if (!soundEnabled || !Platform.isWindows) return Duration.zero;
+    final duration = wavDurationOf(startSoundPath);
+    if (duration == null) return Duration.zero;
+    return duration * repeatCountFor(duration);
   }
 
   Future<void> playStopSound() async {
@@ -292,18 +327,12 @@ class SoundService {
   /// 音效檔太短就重播頂到 [kMinSoundDuration]，見 [repeatCountFor]。
   static Future<void> _playWindowsRepeated(
       String path, double minMasterVolume) async {
-    final wavPath =
-        path.toLowerCase().endsWith('.wav') ? path : kWindowsSounds[path];
-    if (wavPath == null || !File(wavPath).existsSync()) {
+    final wavPath = windowsWavPathFor(path);
+    if (wavPath == null) {
       print('[SoundService] no Windows sound for: $path');
       return;
     }
-    Duration? duration;
-    try {
-      duration = wavDuration(File(wavPath).readAsBytesSync());
-    } catch (_) {
-      duration = null;
-    }
+    final duration = wavDurationOf(path);
     final repeats = repeatCountFor(duration);
     _boostMaster(minMasterVolume, (duration ?? kMinSoundDuration) * repeats);
     for (var i = 0; i < repeats; i++) {

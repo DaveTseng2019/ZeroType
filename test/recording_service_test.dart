@@ -351,6 +351,47 @@ void main() {
     });
   });
 
+  group('trimLeadingPcm（切掉錄進來的開始提示音）', () {
+    // 外放時提示音會進錄音檔，連帶被送去辨識。切掉的長度換算錯誤就是
+    // 「提示音還在」或「使用者開頭的字被吃掉」，兩種都直接傷到辨識結果。
+    test('切掉的位元組數等於時間換算的取樣數', () {
+      final pcm = pcmFrames(List.filled(100, 5000)); // 100 框 × 20ms = 2000ms
+      final out = trimLeadingPcm(pcm, const Duration(milliseconds: 500));
+      // 500ms × 16000Hz × 2 bytes = 16000 bytes
+      expect(pcm.length - out.length, 16000);
+    });
+
+    // 切在半個取樣上，後面每個取樣的高低位元組會顛倒，整段變成雜訊 ——
+    // 這種壞法不會拋例外，只會讓辨識結果莫名其妙，所以要有斷言守著
+    test('切點一律對齊 16-bit 取樣邊界', () {
+      final pcm = pcmFrames(List.filled(10, 5000));
+      // 16kHz 下每毫秒剛好 32 bytes，永遠是偶數，測不出對齊有沒有做。
+      // 44.1kHz 的 5ms = 441 bytes（奇數）才碰得到那條 & ~1。
+      final out =
+          trimLeadingPcm(pcm, const Duration(milliseconds: 5), sampleRate: 44100);
+      expect(pcm.length - out.length, 440);
+    });
+
+    // 音效關掉時沒有提示音可切，切了就是白白吃掉使用者講的話
+    test('長度為零就原樣回傳，不複製也不切', () {
+      final pcm = pcmFrames([5000, 5000]);
+      expect(trimLeadingPcm(pcm, Duration.zero), same(pcm));
+    });
+
+    // 按下去馬上放開：整段都是提示音。回空的讓呼叫端走「沒錄到」的路，
+    // 而不是把提示音送去辨識換回一段幻覺
+    test('要切的比整段還長就回空，讓呼叫端當成沒錄到', () {
+      final pcm = pcmFrames([5000, 5000]); // 40ms
+      expect(trimLeadingPcm(pcm, const Duration(seconds: 2)), isEmpty);
+    });
+
+    test('切掉後保留的是後半段的內容，不是前半段', () {
+      final pcm = pcmFrames([1000, 9000]); // 前 20ms 小聲、後 20ms 大聲
+      final out = trimLeadingPcm(pcm, const Duration(milliseconds: 20));
+      expect(frameRms(out, 0), closeTo(9000, 1));
+    });
+  });
+
   group('QuietGate（精簡模式自動停止）', () {
     final t0 = DateTime(2026, 1, 1);
     DateTime at(int ms) => t0.add(Duration(milliseconds: ms));

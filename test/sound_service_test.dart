@@ -75,16 +75,18 @@ void main() {
       expect(repeatCountFor(kMinSoundDuration), 1);
     });
 
-    // 目前門檻情境：Speech On.wav 實測約 836ms，900ms 門檻下該播 2 次
-    test('836ms 音檔（Speech On.wav 實測值）在 900ms 門檻下重播 2 次', () {
+    // 開始提示音每多播一次，錄音開頭就要多切掉一份（見 trimLeadingPcm）。
+    // 門檻訂在 800ms 就是為了讓預設的 Speech On.wav 只播一次；這條斷言破了
+    // 代表切掉的長度又變回兩倍，使用者會抱怨開頭的字被吃掉。
+    test('836ms 音檔（Speech On.wav 實測值）在 800ms 門檻下只播 1 次', () {
       expect(
         repeatCountFor(const Duration(milliseconds: 836)),
-        2,
+        1,
       );
     });
 
-    // 130ms 音檔在 900ms 門檻下理論要 7 次，但頂到上限 5
-    test('130ms 音檔在 900ms 門檻下被上限頂在 5 次', () {
+    // 130ms 音檔在 800ms 門檻下理論要 7 次，但頂到上限 5
+    test('130ms 音檔在 800ms 門檻下被上限頂在 5 次', () {
       expect(
         repeatCountFor(const Duration(milliseconds: 130)),
         5,

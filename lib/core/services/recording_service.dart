@@ -12,6 +12,19 @@ import 'package:win32/win32.dart';
 /// Whisper 系列模型的原生取樣率，送更高的沒有好處只是變大包
 const int kRecordSampleRate = 16000;
 
+/// 從 [onCaptureStart]（提示音在那一刻開播）到提示音真的從喇叭出聲之間的延遲。
+/// 外放時要從錄音開頭切掉的長度是「這個值 ＋ 提示音播放總長 ＋ [kBeepTailMs]」。
+///
+/// notes: 320ms 是實測值，不是規格。量法是對 history_audio 的錄音做 FFT，找
+///        Speech On.wav 的指紋頻率（933 Hz ＋ 698 Hz）第一次出現的位置；
+///        2026-09-12 的三段外放錄音都落在 0.32s，彼此差不到一個音框。
+///        這個延遲來自 PlaySoundW 非同步起播與音訊輸出緩衝，換音效卡或改用
+///        別的播放方式就要重量。
+const int kBeepOnsetDelayMs = 320;
+
+/// 提示音尾巴的餘裕。系統音效多半有殘響，檔案長度到了聲音還沒完全衰減。
+const int kBeepTailMs = 120;
+
 /// 噪音門檻的分析音框長度
 const int _kFrameMs = 20;
 
@@ -354,6 +367,24 @@ Uint8List buildWav(
   return out.takeBytes();
 }
 
+/// 切掉 [pcm] 開頭 [leading] 這段——外放時麥克風會把開始提示音錄進去，那段
+/// 既不是使用者講的話，又會讓 [applyGain] 拿提示音當峰值把人聲壓小。
+///
+/// 要切的長度超過整段錄音時回空的 Uint8List：代表使用者根本沒講到話，
+/// 交給呼叫端當「沒錄到東西」處理。位元組數一律對齊到 16-bit 取樣邊界，
+/// 切在半個取樣上會讓後面每一個取樣的高低位元組顛倒，變成一段雜訊。
+Uint8List trimLeadingPcm(
+  Uint8List pcm,
+  Duration leading, {
+  int sampleRate = kRecordSampleRate,
+}) {
+  if (leading <= Duration.zero || pcm.isEmpty) return pcm;
+  final bytes = (leading.inMilliseconds * sampleRate * 2 / 1000).round() & ~1;
+  if (bytes <= 0) return pcm;
+  if (bytes >= pcm.length) return Uint8List(0);
+  return Uint8List.sublistView(pcm, bytes);
+}
+
 /// 噪音門檻：把明顯屬於底噪的音框壓下去。
 ///
 /// 門檻取「音框 RMS 的第 10 百分位（噪音底）× [marginFactor]」，不是整段平均值 ——
@@ -447,6 +478,9 @@ class RecordingService {
   String? _currentFilePath;
   StreamSubscription<Uint8List>? _streamSubscription;
   BytesBuilder? _pcm;
+
+  /// 這次錄音要從開頭切掉多少，見 [startRecording] 的 startSoundDuration
+  Duration _trimLeading = Duration.zero;
   /// 0 代表不過濾。見 [startRecording] 的 noiseGateStrength。
   double _noiseGateStrength = 0;
   DateTime _lastAmplitudeAt = DateTime.fromMillisecondsSinceEpoch(0);
@@ -482,6 +516,10 @@ class RecordingService {
     Duration warmupTimeout = Duration.zero,
     /// 真正開始收音的那一刻（提示音在這裡響，才是「可以講了」）
     void Function()? onCaptureStart,
+    /// 開始提示音的播放總長。外放時這段會被錄進去，送辨識前要切掉；
+    /// 實際切掉的是它加上 [kBeepOnsetDelayMs] 與 [kBeepTailMs]。
+    /// 傳 [Duration.zero]（音效關閉時）就完全不切。
+    Duration startSoundDuration = Duration.zero,
   }) async {
     final dir = await getTemporaryDirectory();
     // The sandbox cache dir may not exist when app-sandbox is disabled in debug.
@@ -492,6 +530,10 @@ class RecordingService {
     final timestamp = DateTime.now().millisecondsSinceEpoch;
     _currentFilePath = '${dir.path}/zerotype_$timestamp.wav';
     _noiseGateStrength = noiseGateStrength;
+    _trimLeading = startSoundDuration <= Duration.zero
+        ? Duration.zero
+        : startSoundDuration +
+            const Duration(milliseconds: kBeepOnsetDelayMs + kBeepTailMs);
 
     final device = (deviceId == null || deviceId.isEmpty)
         ? null
@@ -610,9 +652,22 @@ class RecordingService {
       return null;
     }
 
+    // 提示音要在噪音門檻與自動增益之前切掉：它比人聲大得多，留著會被
+    // [applyGain] 當成峰值，把真正要聽的人聲壓小。
+    final trimmed = trimLeadingPcm(pcm, _trimLeading);
+    if (_trimLeading > Duration.zero) {
+      print('[RecordingService] trimmed ${pcm.length - trimmed.length} bytes '
+          '(${_trimLeading.inMilliseconds}ms) of start beep');
+    }
+    if (trimmed.isEmpty) {
+      print('[RecordingService] nothing left after trimming start beep');
+      lastDiscardReason = '只錄到開始提示音，還沒講話就結束了';
+      return null;
+    }
+
     final processed = _noiseGateStrength > 0
-        ? applyNoiseGate(pcm, marginFactor: _noiseGateStrength)
-        : pcm;
+        ? applyNoiseGate(trimmed, marginFactor: _noiseGateStrength)
+        : trimmed;
 
     // 整段都是數位靜音就不要送辨識 —— 模型會憑空編一段出來（見 [hasAnySound]）
     if (!hasAnySound(processed)) {
