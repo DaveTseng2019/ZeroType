@@ -25,10 +25,7 @@ import 'shared/widgets/main_shell.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   // 已有實例在跑就把它叫出來,本次直接退出
-  if (!await ensureSingleInstance(onSecondLaunch: () async {
-    await windowManager.show();
-    await windowManager.focus();
-  })) {
+  if (!await ensureSingleInstance(onSecondLaunch: showMainWindow)) {
     exit(0);
   }
   // 使用者選擇啟動時縮小至系統匣,則不顯示視窗
@@ -66,11 +63,33 @@ Future<void> _initWindowManager({required bool showWindow}) async {
   await windowManager.waitUntilReadyToShow(windowOptions, () async {
     // 攔截關閉事件,改為隱藏到系統匣(見 onWindowClose)
     await windowManager.setPreventClose(true);
-    if (showWindow) {
-      await windowManager.show();
-      await windowManager.focus();
-    }
+    if (showWindow) await showMainWindow();
   });
+}
+
+/// 叫出主視窗。若上緣跑到所有螢幕範圍之外就置中拉回來——多螢幕、螢幕改解析度
+/// 或拔掉副螢幕都可能讓上次記住的位置失效。
+///
+/// notes: 這段檢查本來掛在 WindowListener.onWindowShow，但那個方法不存在於
+///        window_manager 0.5.2 的 mixin，等於從沒被呼叫過。改成顯示視窗時自己做。
+///        套件哪天補上 onWindowShow，可以再考慮搬回事件裡。
+Future<void> showMainWindow() async {
+  await windowManager.show();
+  await windowManager.focus();
+  try {
+    final bounds = await windowManager.getBounds();
+    final displays = await screenRetriever.getAllDisplays();
+    final topCenter = Offset(bounds.left + bounds.width / 2, bounds.top);
+    final onScreen = displays.any((d) {
+      final pos = d.visiblePosition ?? Offset.zero;
+      final size = d.visibleSize ?? d.size;
+      return Rect.fromLTWH(pos.dx, pos.dy, size.width, size.height)
+          .contains(topCenter);
+    });
+    if (!onScreen) await windowManager.center();
+  } catch (_) {
+    // 抓不到螢幕資訊就算了，不影響正常顯示
+  }
 }
 
 Future<void> _initLaunchAtStartup() async {
@@ -138,7 +157,7 @@ class _AppInitializerState extends ConsumerState<_AppInitializer>
     _hotkeyService.setCallback(HotkeyKind.phrase, _onPhraseHotkeyActivated);
 
     await _trayService.initialize(
-      onShowWindow: _showWindow,
+      onShowWindow: showMainWindow,
       onQuit: quitApp,
     );
 
@@ -162,36 +181,9 @@ class _AppInitializerState extends ConsumerState<_AppInitializer>
     await ref.read(phrasePickerProvider).open();
   }
 
-  void _showWindow() {
-    windowManager.show();
-    windowManager.focus();
-  }
-
   @override
   void onWindowClose() async {
     await windowManager.hide();
-  }
-
-  /// 視窗顯示（含被叫出系統匣）時，若上緣跑到所有螢幕範圍之外就置中拉回來——
-  /// 多螢幕、螢幕改解析度或拔掉副螢幕都可能讓上次記住的位置失效。
-  @override
-  void onWindowShow() async {
-    try {
-      final bounds = await windowManager.getBounds();
-      final displays = await screenRetriever.getAllDisplays();
-      final topCenter = Offset(bounds.left + bounds.width / 2, bounds.top);
-      final onScreen = displays.any((d) {
-        final pos = d.visiblePosition ?? Offset.zero;
-        final size = d.visibleSize ?? d.size;
-        return Rect.fromLTWH(pos.dx, pos.dy, size.width, size.height)
-            .contains(topCenter);
-      });
-      if (!onScreen) {
-        await windowManager.center();
-      }
-    } catch (_) {
-      // 抓不到螢幕資訊就算了，不影響正常顯示
-    }
   }
 
   @override
