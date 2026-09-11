@@ -46,12 +46,18 @@ class LocalSttService {
   ///
   /// notes: 判斷標準是資料夾裡有沒有 shim.py。多一個候選位置的代價是一次
   ///        existsSync，比要使用者自己填一條路徑便宜太多。
+  /// notes: 只認跟使用者環境無關的位置——執行檔旁邊、使用者資料夾。
+  ///        不要把任何一台特定機器的絕對路徑寫進來：這個 repo 是公開的，
+  ///        而且每個人的環境不一樣。放在別處的人用「啟動設定（進階）」指定。
   List<String> get _rootCandidates {
+    final exeDir = File(Platform.resolvedExecutable).parent.path;
     final home = Platform.environment['USERPROFILE'];
+    final localAppData = Platform.environment['LOCALAPPDATA'];
     return [
-      r'C:\Learning\LocalSTT',
+      '$exeDir\\LocalSTT',
       if (home != null && home.isNotEmpty) '$home\\LocalSTT',
-      '${File(Platform.resolvedExecutable).parent.path}\\LocalSTT',
+      if (localAppData != null && localAppData.isNotEmpty)
+        '$localAppData\\LocalSTT',
     ];
   }
 

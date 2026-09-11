@@ -903,13 +903,14 @@ class _CustomEndpointInputState extends State<_CustomEndpointInput> {
 class _LocalNotInstalledNotice extends StatelessWidget {
   const _LocalNotInstalledNotice();
 
-  static const _instructions = '請幫我在這台 Windows 電腦上安裝 ZeroType 的本機語音辨識程式：\n'
-      '1. 取得 LocalSTT 專案，放到 C:\\Learning\\LocalSTT（或使用者資料夾底下的 LocalSTT）。\n'
-      '2. 在 LocalSTT\\repo 底下用 uv 建立虛擬環境 .venv，並安裝相依套件。\n'
-      '3. 確認這一行跑得起來：\n'
-      '   C:\\Learning\\LocalSTT\\repo\\.venv\\Scripts\\python.exe C:\\Learning\\LocalSTT\\shim.py\n'
-      '4. 它會在 http://127.0.0.1:8123 提供服務。\n'
-      '裝好之後 ZeroType 會自動找到，我不需要在設定裡填任何路徑。';
+  /// notes: 說明只寫「一定是這樣」的事。絕對路徑、port、虛擬環境的資料夾名稱
+  ///        都是可以改的值，寫進去只會讓照做的人在別台機器上撞牆，而且這個 repo
+  ///        是公開的，不該出現任何一台機器的實際路徑。
+  static const _instructions = '請幫我在這台 Windows 電腦上安裝 ZeroType 的本機語音辨識端點（LocalSTT 專案）：\n'
+      '1. 取得專案，放到使用者資料夾底下的 LocalSTT。\n'
+      '2. 建立 Python 虛擬環境並安裝相依套件。\n'
+      '3. 確認可以用該虛擬環境執行 shim.py。\n'
+      '放在這個位置 ZeroType 會自動找到，我不必填任何設定。';
 
   @override
   Widget build(BuildContext context) {
@@ -929,8 +930,7 @@ class _LocalNotInstalledNotice extends StatelessWidget {
               style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
           const SizedBox(height: 6),
           Text(
-            '本機辨識要另外裝一個小程式，ZeroType 不會自己安裝它。'
-            '把下面這段說明複製起來，貼給 AI 助理或請人代勞就可以了。裝好之後這裡會自動變成「未啟動」，按啟動即可。',
+            '本機辨識要另外裝一個小程式。複製下面的說明，貼給 AI 助理或請人代勞；裝好之後這裡會變成「未啟動」，按啟動即可。',
             style: TextStyle(fontSize: 13, color: cs.onSurface.withAlpha(180), height: 1.5),
           ),
           const SizedBox(height: 8),
