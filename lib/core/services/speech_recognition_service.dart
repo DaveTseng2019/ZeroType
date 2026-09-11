@@ -3,6 +3,10 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 
+/// 本機 shim 的預設位址（LocalSTT 專案，start.ps1 預設監聽這個 port）。
+/// 換 port 的話在設定頁的「自訂端點」覆蓋。
+const kLocalTranscriptionUrl = 'http://127.0.0.1:8123/v1/audio/transcriptions';
+
 typedef TranscriptionResult = ({
   String text,
   int? inputTokens,
@@ -24,6 +28,7 @@ class SpeechRecognitionService {
     required String model,
     required String prompt,
     String? customEndpoint,
+    String hotwords = '',
   }) async {
     print('[SpeechRecognition] Transcribing with $provider ($model)...');
 
@@ -35,6 +40,19 @@ class SpeechRecognitionService {
           model: model,
           prompt: prompt,
           customEndpoint: customEndpoint,
+        );
+      // 本機 shim 講的是同一套 OpenAI 轉寫協定，只多收一個 hotwords 欄位。
+      // notes: shim 刻意不理會 prompt——那段是給 chat 型模型的整段指令，MOSS 會在
+      //        音訊內容偏弱時把指令本身當答案抄出來。所以字典只能走 hotwords。
+      case 'local':
+        return _transcribeWithOpenAI(
+          audioFilePath: audioFilePath,
+          apiKey: apiKey,
+          model: model,
+          prompt: prompt,
+          customEndpoint: customEndpoint,
+          hotwords: hotwords,
+          defaultUrl: kLocalTranscriptionUrl,
         );
       case 'gemini':
         return _transcribeWithGemini(
@@ -63,6 +81,8 @@ class SpeechRecognitionService {
     required String model,
     required String prompt,
     String? customEndpoint,
+    String hotwords = '',
+    String defaultUrl = 'https://api.openai.com/v1/audio/transcriptions',
   }) async {
     final formData = FormData.fromMap({
       'file': await MultipartFile.fromFile(
@@ -72,11 +92,12 @@ class SpeechRecognitionService {
       'model': model,
       'response_format': 'json',
       if (prompt.isNotEmpty) 'prompt': prompt,
+      if (hotwords.isNotEmpty) 'hotwords': hotwords,
     });
 
     final url = (customEndpoint != null && customEndpoint.isNotEmpty)
         ? customEndpoint
-        : 'https://api.openai.com/v1/audio/transcriptions';
+        : defaultUrl;
 
     final response = await _dio.post<dynamic>(
       url,

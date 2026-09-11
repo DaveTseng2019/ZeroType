@@ -203,8 +203,8 @@ class ModelConfigRepository {
       _prefs.remove('api_key_speech_$providerId');
 
   Future<String?> getCustomEndpoint(String providerId) async =>
-      _prefs.getString('custom_endpoint_$providerId');
+      _prefs.getString(AppConstants.customEndpointKey(providerId));
 
   Future<void> saveCustomEndpoint(String providerId, String endpoint) async =>
-      _prefs.setString('custom_endpoint_$providerId', endpoint);
+      _prefs.setString(AppConstants.customEndpointKey(providerId), endpoint);
 }

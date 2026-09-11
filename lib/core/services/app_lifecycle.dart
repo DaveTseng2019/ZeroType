@@ -107,5 +107,8 @@ Future<bool> _ensureSingleInstanceSocket(void Function() onSecondLaunch) async {
 Never quitApp() {
   hotkeyService.dispose();
   trayService.dispose();
+  // 只殺我們自己啟動的本機端點。使用者手動跑起來的那個不歸我們管,
+  // 關掉它會把別人刻意留著的服務一起收掉。
+  localSttService.stop();
   exit(0);
 }

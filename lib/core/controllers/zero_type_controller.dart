@@ -118,7 +118,8 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
 
     final config = await ref.read(speechProviderControllerProvider.future);
     if (config.providerId == null || config.providerId!.isEmpty ||
-        config.apiKey == null || config.apiKey!.isEmpty ||
+        (_needsApiKey(config.providerId) &&
+            (config.apiKey == null || config.apiKey!.isEmpty)) ||
         config.modelId == null || config.modelId!.isEmpty) {
       _log.error('請先完成語音辨識模型設定');
       await soundService.playCancelSound();
@@ -259,6 +260,10 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
     });
   }
 
+  /// 本機服務商跑在自己機器上，沒有金鑰可填。設定檢查要放行，不然永遠卡在
+  /// 「請先完成語音辨識模型設定」。
+  static bool _needsApiKey(String? providerId) => providerId != 'local';
+
   /// 音訊那一段唯一給的指令。刻意不放任何規則或範例 —— 那些都是模型
   /// 在聽不清楚時會拿來照抄的素材。
   ///
@@ -325,7 +330,7 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
     final dictionaryRepo = ref.read(dictionaryRepositoryProvider);
 
     if (config.providerId == null ||
-        config.apiKey == null ||
+        (_needsApiKey(config.providerId) && config.apiKey == null) ||
         config.modelId == null) {
       throw Exception('請先完成語音辨識模型設定');
     }
@@ -336,11 +341,22 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
     // 措辭怎麼改都壓不住，所以 chat 型服務商一律兩段式：音訊那段只給最小指令，
     // 規則、範例、字典全部移到第二段純文字處理。whisper（openai）不吃這套，維持原樣。
     final isWhisper = config.providerId == 'openai';
+    final isLocal = config.providerId == 'local';
+    // 一段式：字典在辨識當下就送出，之後不跑第二段純文字校正。
+    // 動這一行之前先想清楚——它決定走一段式還是兩段式。新服務商若沒歸類進來，
+    // 第二段 chat 校正會拿一段式的位址與認證去打，必定失敗。
+    final isSingleStage = isWhisper || isLocal;
+
     final dictionaryPrompt =
         isWhisper ? await dictionaryRepo.buildDictionaryPrompt() : '';
+    // notes: 本機 MOSS 走 hotwords，不走 prompt。shim 刻意忽略 prompt——那段是給 chat
+    //        型模型的整段指令，MOSS 在音訊內容偏弱時會把指令本身當答案抄出來。
+    //        送出的是純詞彙列表，不是 buildDictionaryPrompt() 的指令文，同一個理由。
+    final hotwords =
+        isLocal ? (await dictionaryRepo.loadWords()).join('、') : '';
     final audioPrompt = isWhisper
         ? (dictionaryPrompt.isEmpty ? prompt : '$prompt\n\n$dictionaryPrompt')
-        : _kBareTranscribePrompt;
+        : (isLocal ? '' : _kBareTranscribePrompt);
 
     final service = speechService;
     final audioFile = File(filePath);
@@ -352,15 +368,16 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       audioBytes,
       () => service.transcribe(
         audioFilePath: filePath,
-        apiKey: config.apiKey!,
+        apiKey: config.apiKey ?? '',
         provider: config.providerId!,
         model: config.modelId!,
         prompt: audioPrompt,
         customEndpoint: config.customEndpoint,
+        hotwords: hotwords,
       ),
     );
 
-    if (isWhisper || result.text.isEmpty) return result;
+    if (isSingleStage || result.text.isEmpty) return result;
     final correctionPrompt = await dictionaryRepo.buildCorrectionPrompt();
 
     try {

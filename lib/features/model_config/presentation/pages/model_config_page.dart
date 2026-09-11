@@ -1,10 +1,12 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:zero_type/core/constants/model_pricing.dart';
 import 'package:zero_type/core/di/injection.dart';
+import 'package:zero_type/core/constants/app_constants.dart';
 import '../controllers/model_config_controller.dart';
 import '../../entities/ai_provider.dart';
 
@@ -184,12 +186,21 @@ class _SpeechConfigSection extends ConsumerWidget {
                 );
               }).toList(),
             ),
-            const SizedBox(height: 24),
-            _ApiKeyInput(
-              providerId: state.providerId ?? '',
-              initialValue: state.apiKey ?? '',
-              onSave: (val) => ref.read(speechProviderControllerProvider.notifier).saveApiKey(val),
-            ),
+            // 本機服務商沒有金鑰可填，也沒有可測試的對象，整塊隱藏。
+            if (state.providerId != 'local') ...[
+              const SizedBox(height: 24),
+              _ApiKeyInput(
+                providerId: state.providerId ?? '',
+                initialValue: state.apiKey ?? '',
+                onSave: (val) => ref.read(speechProviderControllerProvider.notifier).saveApiKey(val),
+              ),
+            ] else ...[
+              const SizedBox(height: 24),
+              // key 綁著模型 id：換服務商或換模型都會重建這個面板，
+              // 於是 initState 會重新探一次端點狀態。使用者剛點過模型時，
+              // 最想知道的就是「那個模型現在跑得起來嗎」。
+              _LocalProviderPanel(key: ValueKey('local-${state.modelId}')),
+            ],
             const SizedBox(height: 24),
             Row(
               children: [
@@ -225,6 +236,287 @@ class _SpeechConfigSection extends ConsumerWidget {
   }
 }
 
+
+/// 本機服務商沒有金鑰欄位。這裡取而代之的是端點狀態、手動開關，
+/// 以及「要不要隨 ZeroType 一起啟動」。
+///
+/// notes: 本機模型常駐約 1.8 GB VRAM。不用的時候要能收回來，所以停止鍵是必要的，
+///        不是方便性功能。
+class _LocalProviderPanel extends StatefulWidget {
+  const _LocalProviderPanel({super.key});
+
+  @override
+  State<_LocalProviderPanel> createState() => _LocalProviderPanelState();
+}
+
+class _LocalProviderPanelState extends State<_LocalProviderPanel> {
+  /// null 表示還在確認。
+  bool? _running;
+  bool _busy = false;
+  late bool _autoStart;
+  late bool _showConsole;
+  bool _logOpen = false;
+  List<String> _log = const [];
+  Timer? _poll;
+  Timer? _logTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _autoStart = appPrefs.getBool(AppConstants.localSttAutoStartKey) ?? true;
+    _showConsole =
+        appPrefs.getBool(AppConstants.localSttShowConsoleKey) ?? false;
+    _refresh();
+  }
+
+  @override
+  void dispose() {
+    _poll?.cancel();
+    _logTimer?.cancel();
+    super.dispose();
+  }
+
+  /// 展開時每兩秒重讀一次，講完一句就能在這裡看到結果；收合就停掉。
+  void _toggleLog() {
+    setState(() => _logOpen = !_logOpen);
+    _logTimer?.cancel();
+    if (!_logOpen) return;
+    _refresh();
+    _logTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!mounted) return;
+      setState(() => _log = localSttService.readLog());
+    });
+  }
+
+  /// 狀態與記錄一起更新。使用者按「重新檢查」時想知道的就是這兩件事。
+  Future<void> _refresh() async {
+    final healthy = await localSttService.isHealthy();
+    final log = localSttService.readLog();
+    if (mounted) {
+      setState(() {
+        _running = healthy;
+        _log = log;
+      });
+    }
+  }
+
+  /// 模型載進 GPU 要十秒上下，按下啟動後得持續探測，不然畫面會停在「未啟動」。
+  void _pollUntilRunning() {
+    _poll?.cancel();
+    var elapsed = 0;
+    _poll = Timer.periodic(const Duration(seconds: 2), (timer) async {
+      elapsed += 2;
+      final healthy = await localSttService.isHealthy();
+      final log = localSttService.readLog();
+      if (!mounted) return timer.cancel();
+      setState(() {
+        _running = healthy;
+        _log = log;
+      });
+      if (healthy || elapsed >= 60) {
+        timer.cancel();
+        if (mounted) setState(() => _busy = false);
+      }
+    });
+  }
+
+  Future<void> _start() async {
+    setState(() => _busy = true);
+    await localSttService.ensureRunning();
+    _pollUntilRunning();
+  }
+
+  Future<void> _stop() async {
+    setState(() => _busy = true);
+    _poll?.cancel();
+    await localSttService.shutdown();
+    await Future<void>.delayed(const Duration(milliseconds: 500));
+    await _refresh();
+    if (mounted) setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final running = _running;
+    // 找不到辨識程式就不必給啟動鍵——按了也只會沒反應。
+    final installed = localSttService.program.isNotEmpty;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surface,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: cs.onSurface.withAlpha(30)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                running == true ? Icons.check_circle : Icons.radio_button_unchecked,
+                size: 18,
+                color: running == true ? Colors.green : cs.onSurface.withAlpha(100),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                running == null
+                    ? '本機端點：確認中…'
+                    : (running ? '本機端點：執行中' : '本機端點：未啟動'),
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
+              ),
+              const SizedBox(width: 8),
+              if (_busy)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              const Spacer(),
+              IconButton(
+                onPressed: _busy ? null : _refresh,
+                icon: const Icon(Icons.refresh, size: 18),
+                tooltip: '重新檢查',
+                visualDensity: VisualDensity.compact,
+              ),
+              const SizedBox(width: 4),
+              if (running == true)
+                OutlinedButton.icon(
+                  onPressed: _busy ? null : _stop,
+                  icon: const Icon(Icons.stop, size: 16),
+                  label: const Text('停止'),
+                  style: OutlinedButton.styleFrom(
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                )
+              else
+                ElevatedButton.icon(
+                  onPressed: _busy || !installed ? null : _start,
+                  icon: const Icon(Icons.play_arrow, size: 16),
+                  label: const Text('啟動'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: cs.primary,
+                    foregroundColor: cs.onPrimary,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            '本機辨識不需要 API Key，也不會產生費用，但模型常駐約 1.8 GB 顯示記憶體。'
+            '暫時不用本機辨識時按「停止」就能收回。',
+            style: TextStyle(fontSize: 13, color: cs.onSurface.withAlpha(180), height: 1.5),
+          ),
+          if (!installed) ...[
+            const SizedBox(height: 12),
+            const _LocalNotInstalledNotice(),
+          ],
+          const Divider(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('隨 ZeroType 一起啟動',
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    const SizedBox(height: 2),
+                    Text(
+                      '只有在服務商選「本機」時才會啟動。關閉 ZeroType 時一併關掉。',
+                      style: TextStyle(fontSize: 12, color: cs.onSurface.withAlpha(150)),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _autoStart,
+                onChanged: (val) {
+                  setState(() => _autoStart = val);
+                  appPrefs.setBool(AppConstants.localSttAutoStartKey, val);
+                },
+              ),
+            ],
+          ),
+          const Divider(height: 24),
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text('啟動時顯示主控台視窗',
+                        style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                    const SizedBox(height: 2),
+                    Text(
+                      '關閉時端點在背景執行，不會有視窗被誤關。'
+                      '下次啟動端點才生效；平常看訊息請用下面的「端點記錄」。',
+                      style: TextStyle(fontSize: 12, color: cs.onSurface.withAlpha(150)),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _showConsole,
+                onChanged: (val) {
+                  setState(() => _showConsole = val);
+                  appPrefs.setBool(AppConstants.localSttShowConsoleKey, val);
+                },
+              ),
+            ],
+          ),
+          const Divider(height: 24),
+          const _LocalLaunchSettings(),
+          const Divider(height: 24),
+          Row(
+            children: [
+              const Text('端點記錄',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+              const SizedBox(width: 8),
+              Text(
+                '每一句的耗時與結果',
+                style: TextStyle(fontSize: 12, color: cs.onSurface.withAlpha(150)),
+              ),
+              const Spacer(),
+              TextButton(
+                onPressed: _toggleLog,
+                style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                child: Text(_logOpen ? '收合' : '展開'),
+              ),
+            ],
+          ),
+          if (_logOpen) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              constraints: const BoxConstraints(maxHeight: 260),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: cs.onSurface.withAlpha(12),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: SingleChildScrollView(
+                reverse: true,
+                child: SelectableText(
+                  _log.isEmpty
+                      ? '（還沒有記錄。端點啟動後才會寫入。）'
+                      : _log.join('\n'),
+                  style: TextStyle(
+                    fontFamily: 'Consolas',
+                    fontSize: 12,
+                    height: 1.6,
+                    color: cs.onSurface.withAlpha(200),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
 
 class _ApiKeyInput extends ConsumerStatefulWidget {
   const _ApiKeyInput({
@@ -598,6 +890,200 @@ class _CustomEndpointInputState extends State<_CustomEndpointInput> {
           ],
         ),
       ],
+    );
+  }
+}
+
+
+/// 這台機器上沒有本機辨識程式時顯示的說明。
+///
+/// notes: 不要在這裡叫使用者去填路徑。不熟電腦的人不知道 venv 是什麼，
+///        填錯路徑只會得到一個「啟動失敗」。給一段可以直接貼給 AI 或工程師的字，
+///        裝完了 ZeroType 會自己找到。
+class _LocalNotInstalledNotice extends StatelessWidget {
+  const _LocalNotInstalledNotice();
+
+  static const _instructions = '請幫我在這台 Windows 電腦上安裝 ZeroType 的本機語音辨識程式：\n'
+      '1. 取得 LocalSTT 專案，放到 C:\\Learning\\LocalSTT（或使用者資料夾底下的 LocalSTT）。\n'
+      '2. 在 LocalSTT\\repo 底下用 uv 建立虛擬環境 .venv，並安裝相依套件。\n'
+      '3. 確認這一行跑得起來：\n'
+      '   C:\\Learning\\LocalSTT\\repo\\.venv\\Scripts\\python.exe C:\\Learning\\LocalSTT\\shim.py\n'
+      '4. 它會在 http://127.0.0.1:8123 提供服務。\n'
+      '裝好之後 ZeroType 會自動找到，我不需要在設定裡填任何路徑。';
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cs.onSurface.withAlpha(12),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text('這台電腦上還沒有本機辨識程式',
+              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+          const SizedBox(height: 6),
+          Text(
+            '本機辨識要另外裝一個小程式，ZeroType 不會自己安裝它。'
+            '把下面這段說明複製起來，貼給 AI 助理或請人代勞就可以了。裝好之後這裡會自動變成「未啟動」，按啟動即可。',
+            style: TextStyle(fontSize: 13, color: cs.onSurface.withAlpha(180), height: 1.5),
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: OutlinedButton.icon(
+              onPressed: () {
+                Clipboard.setData(const ClipboardData(text: _instructions));
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('安裝說明已複製，貼給 AI 助理就可以了'),
+                    duration: Duration(seconds: 2),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.copy, size: 16),
+              label: const Text('複製安裝說明'),
+              style: OutlinedButton.styleFrom(
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 端點的啟動方式。預設是這台機器上的 LocalSTT，但本機模型不會只有一種，
+/// 所以路徑、參數與記錄檔都要能改。
+///
+/// notes: 端點位址不放在這裡。那一份在「進階設定 → 自建模型接口」，
+///        辨識請求與 /health、/shutdown 共用同一個值，不要開第二個欄位。
+class _LocalLaunchSettings extends StatefulWidget {
+  const _LocalLaunchSettings();
+
+  @override
+  State<_LocalLaunchSettings> createState() => _LocalLaunchSettingsState();
+}
+
+class _LocalLaunchSettingsState extends State<_LocalLaunchSettings> {
+  late final TextEditingController _program;
+  late final TextEditingController _arguments;
+  late final TextEditingController _logPath;
+
+  @override
+  void initState() {
+    super.initState();
+    // 欄位放的是「使用者自己填過的值」，通常是空的。
+    // 空欄位由 hintText 顯示自動偵測到的路徑，讓人知道不填也會動。
+    _program = TextEditingController(
+        text: appPrefs.getString(AppConstants.localSttProgramKey) ?? '');
+    _arguments = TextEditingController(
+        text: appPrefs.getString(AppConstants.localSttArgumentsKey) ?? '');
+    _logPath = TextEditingController(
+        text: appPrefs.getString(AppConstants.localSttLogPathKey) ?? '');
+  }
+
+  @override
+  void dispose() {
+    _program.dispose();
+    _arguments.dispose();
+    _logPath.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    await localSttService.saveLaunchSettings(
+      program: _program.text,
+      arguments: _arguments.text,
+      logPath: _logPath.text,
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('啟動設定已儲存，下次啟動端點時生效'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+
+  /// 空欄位顯示自動偵測的結果。這三個欄位平常不該有人去動。
+  String _hint(String detected) =>
+      detected.isEmpty ? '自動找不到，要用的話請填完整路徑' : '自動：$detected';
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    Widget field(String label, String hint, TextEditingController controller) {
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+            const SizedBox(height: 4),
+            TextField(
+              controller: controller,
+              decoration: InputDecoration(
+                hintText: hint,
+                hintStyle: TextStyle(color: cs.onSurface.withAlpha(80), fontSize: 12),
+                filled: true,
+                fillColor: cs.surface,
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: cs.onSurface.withAlpha(30)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: BorderSide(color: cs.onSurface.withAlpha(30)),
+                ),
+              ),
+              style: const TextStyle(fontFamily: 'Consolas', fontSize: 12),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        title: const Text('啟動設定（進階）',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+        subtitle: Text(
+          '平常不用動。ZeroType 會自己找辨識程式；只有要換成別的本機模型才填這裡。',
+          style: TextStyle(fontSize: 12, color: cs.onSurface.withAlpha(150)),
+        ),
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(top: 8),
+        expandedCrossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          field('啟動程式', _hint(localSttService.program), _program),
+          field('啟動參數', _hint(localSttService.arguments), _arguments),
+          field('記錄檔', _hint(localSttService.logPath), _logPath),
+          Align(
+            alignment: Alignment.centerRight,
+            child: ElevatedButton(
+              onPressed: _save,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: cs.primary,
+                foregroundColor: cs.onPrimary,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('儲存'),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

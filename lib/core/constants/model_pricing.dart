@@ -16,6 +16,7 @@ const Map<String, String> kProviderNames = {
   'openai': 'OpenAI',
   'gemini': 'Gemini',
   'openrouter': 'OpenRouter',
+  'local': '本機',
 };
 
 const Map<String, String> kModelNames = {
@@ -23,6 +24,9 @@ const Map<String, String> kModelNames = {
   'gpt-4o-transcribe': 'GPT-4o Transcribe',
   'gpt-4o-mini-transcribe': 'GPT-4o Mini Transcribe',
   'whisper-1': 'Whisper',
+  // notes: 本機推論沒有 token 計價，刻意不列進 kModelPricing——calculateCost 回 null，
+  //        費用欄位就不顯示。
+  'moss-transcribe-diarize': 'MOSS Transcribe Diarize',
   'gemini-2.5-flash': 'Gemini 2.5 Flash',
   'gemini-3-flash-preview': 'Gemini 3 Flash Preview',
   'google/gemini-2.5-flash': 'Gemini 2.5 Flash',

@@ -100,6 +100,16 @@
           "name": "小米 MiMo-V2.5"
         }
       ]
+    },
+    {
+      "id": "local",
+      "name": "本機",
+      "models": [
+        {
+          "id": "moss-transcribe-diarize",
+          "name": "MOSS Transcribe Diarize 0.9B"
+        }
+      ]
     }
   ]
 }

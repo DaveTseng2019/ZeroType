@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -36,7 +37,19 @@ void main() async {
   await _initWindowManager(showWindow: !startHidden);
   await configureDependencies();
   await _initLaunchAtStartup();
+  _startLocalSttIfNeeded();
   runApp(const ProviderScope(child: ZeroTypeApp()));
+}
+
+/// 選了本機服務商、而且開關是開的，就把本機辨識端點一起拉起來。
+///
+/// notes: 刻意不 await。模型要載進 GPU，等它等於讓主視窗晚十秒才出現。
+///        端點還沒好之前按熱鍵會辨識失敗，設定頁的狀態列看得到目前進度。
+void _startLocalSttIfNeeded() {
+  final isLocal =
+      appPrefs.getString(AppConstants.selectedSpeechProviderKey) == 'local';
+  final autoStart = appPrefs.getBool(AppConstants.localSttAutoStartKey) ?? true;
+  if (isLocal && autoStart) unawaited(localSttService.ensureRunning());
 }
 
 Future<void> _initWindowManager({required bool showWindow}) async {

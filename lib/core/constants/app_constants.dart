@@ -14,6 +14,24 @@ class AppConstants {
   static const String hotkeyKey = 'global_hotkey';
   static const String launchAtStartupKey = 'launch_at_startup';
   static const String startupMinimizedKey = 'startup_minimized';
+
+  /// 選了本機服務商時，本機辨識端點是否隨 ZeroType 一起啟動
+  static const String localSttAutoStartKey = 'local_stt_auto_start';
+
+  /// 啟動本機辨識端點時要不要留著主控台視窗（下次啟動端點才生效）
+  static const String localSttShowConsoleKey = 'local_stt_show_console';
+
+  /// 本機辨識端點的啟動方式。留空＝ZeroType 只連線，不負責啟動。
+  static const String localSttProgramKey = 'local_stt_program';
+  static const String localSttArgumentsKey = 'local_stt_arguments';
+
+  /// 端點把訊息寫在哪個檔。留空＝設定頁不顯示端點記錄。
+  static const String localSttLogPathKey = 'local_stt_log_path';
+
+  /// 各服務商的自訂端點。位址只有這一份，本機端點的 /health 與 /shutdown
+  /// 也是從這裡推出來的。
+  static String customEndpointKey(String providerId) =>
+      'custom_endpoint_$providerId';
   static const String soundEnabledKey = 'sound_enabled';
   static const String startSoundKey = 'start_sound';
   static const String stopSoundKey = 'stop_sound';
