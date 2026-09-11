@@ -339,8 +339,8 @@ class _LocalProviderPanelState extends State<_LocalProviderPanel> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final running = _running;
-    // 找不到辨識程式就不必給啟動鍵——按了也只會沒反應。
-    final installed = localSttService.program.isNotEmpty;
+    // 找不到辨識程式、或記著的路徑已經不存在，就不給啟動鍵——按了也只會失敗。
+    final installed = localSttService.canLaunch;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -381,7 +381,9 @@ class _LocalProviderPanelState extends State<_LocalProviderPanel> {
                 visualDensity: VisualDensity.compact,
               ),
               const SizedBox(width: 4),
-              if (running == true)
+              // 端點在跑但我們不知道它怎麼啟動的（外部啟動）：兩個鍵都不給。
+              // 停止鍵打得到 /shutdown，但關掉別人啟動的服務不是我們的事。
+              if (running == true && installed)
                 OutlinedButton.icon(
                   onPressed: _busy ? null : _stop,
                   icon: const Icon(Icons.stop, size: 16),
@@ -390,7 +392,7 @@ class _LocalProviderPanelState extends State<_LocalProviderPanel> {
                     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
                   ),
                 )
-              else
+              else if (running != true)
                 ElevatedButton.icon(
                   onPressed: _busy || !installed ? null : _start,
                   icon: const Icon(Icons.play_arrow, size: 16),
@@ -406,12 +408,12 @@ class _LocalProviderPanelState extends State<_LocalProviderPanel> {
           const SizedBox(height: 12),
           Text(
             '本機辨識不需要 API Key，也不會產生費用，但模型常駐約 1.8 GB 顯示記憶體。'
-            '暫時不用本機辨識時按「停止」就能收回。',
+            '${installed ? '暫時不用本機辨識時按「停止」就能收回。' : ''}',
             style: TextStyle(fontSize: 13, color: cs.onSurface.withAlpha(180), height: 1.5),
           ),
           if (!installed) ...[
             const SizedBox(height: 12),
-            const _LocalNotInstalledNotice(),
+            _LocalNotInstalledNotice(endpointRunning: running == true),
           ],
           const Divider(height: 24),
           Row(
@@ -901,14 +903,21 @@ class _CustomEndpointInputState extends State<_CustomEndpointInput> {
 ///        填錯路徑只會得到一個「啟動失敗」。給一段可以直接貼給 AI 或工程師的字，
 ///        裝完了 ZeroType 會自己找到。
 class _LocalNotInstalledNotice extends StatelessWidget {
-  const _LocalNotInstalledNotice();
+  const _LocalNotInstalledNotice({required this.endpointRunning});
+
+  /// 端點連得上。可以假設端點存在，但不能假設它裝在哪——裝在自動搜尋範圍外
+  /// 又用排程自啟的人，辨識是好的，只是 ZeroType 管不到它。
+  final bool endpointRunning;
 
   /// notes: 說明只寫「一定是這樣」的事。絕對路徑、port、虛擬環境的資料夾名稱
   ///        都是可以改的值，寫進去只會讓照做的人在別台機器上撞牆，而且這個 repo
   ///        是公開的，不該出現任何一台機器的實際路徑。
-  static const _instructions = '請幫我在這台 Windows 電腦上安裝 ZeroType 的本機語音辨識端點（LocalSTT 專案）：\n'
-      '1. 取得專案，放到使用者資料夾底下的 LocalSTT。\n'
-      '2. 建立 Python 虛擬環境並安裝相依套件。\n'
+  static const _instructions = '請幫我在這台 Windows 電腦上安裝 ZeroType 的本機語音辨識端點：\n'
+      '\n'
+      '  git clone https://github.com/DaveTseng2019/LocalSTT.git\n'
+      '\n'
+      '1. 把它放到使用者資料夾底下，資料夾名稱保持 LocalSTT。\n'
+      '2. 照該專案 README 的「重建虛擬環境」建立 Python 虛擬環境並安裝相依套件。\n'
       '3. 確認可以用該虛擬環境執行 shim.py。\n'
       '放在這個位置 ZeroType 會自動找到，我不必填任何設定。';
 
@@ -926,11 +935,19 @@ class _LocalNotInstalledNotice extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('這台電腦上還沒有本機辨識程式',
-              style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+          Text(
+              endpointRunning
+                  ? 'ZeroType 找不到本機辨識程式'
+                  : '這台電腦上還沒有本機辨識程式',
+              style: TextStyle(
+                  fontWeight: FontWeight.w600, fontSize: 14, color: cs.primary)),
           const SizedBox(height: 6),
           Text(
-            '本機辨識要另外裝一個小程式。複製下面的說明，貼給 AI 助理或請人代勞；裝好之後這裡會變成「未啟動」，按啟動即可。',
+            endpointRunning
+                ? '端點連得上，辨識可以正常使用。但辨識程式不在 ZeroType 會找的位置，'
+                    '所以無法啟動或停止這個服務，只負責連線。'
+                    '要交給 ZeroType 管，把程式的完整路徑填進下面的「啟動設定（進階）」。'
+                : '本機辨識要另外裝一個小程式。複製下面的說明，貼給 AI 助理或請人代勞；裝好之後這裡會變成「未啟動」，按啟動即可。',
             style: TextStyle(fontSize: 13, color: cs.onSurface.withAlpha(180), height: 1.5),
           ),
           const SizedBox(height: 8),

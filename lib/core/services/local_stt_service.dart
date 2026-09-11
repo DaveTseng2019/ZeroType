@@ -96,6 +96,14 @@ class LocalSttService {
 
   /// 目前生效的啟動設定。空字串＝找不到，也沒有人填——這時候不啟動。
   String get program => _resolved(AppConstants.localSttProgramKey, _pythonRelative);
+
+  /// ZeroType 有沒有辦法自己把端點啟動起來。
+  ///
+  /// notes: 「有路徑」不等於「啟得動」。路徑是存在 prefs 裡跟著使用者走的，
+  ///        資料夾搬過位置、換一台機器、或設定檔被複製過來，那條路徑就指向一個
+  ///        不存在的檔案。只看 isNotEmpty 會給出一顆按了必定失敗的啟動鍵。
+  ///        只驗直譯器本身：啟動參數可能是多個、帶引號，記錄檔則是啟動後才產生的。
+  bool get canLaunch => program.isNotEmpty && File(program).existsSync();
   String get arguments => _resolved(AppConstants.localSttArgumentsKey, _shimName);
   String get logPath => _resolved(AppConstants.localSttLogPathKey, _logName);
 
