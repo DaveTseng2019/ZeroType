@@ -119,6 +119,8 @@ class HistoryController extends AsyncNotifier<List<TranscriptionRecord>> {
         // getApplicationSupportDirectory() 之後接任何 '/xxx' 就會變混合分隔符 ——
         // Windows API 吃得下，explorer.exe 的命令列剖析器不吃，它會當成無法辨識的
         // 參數，默默改開預設資料夾（「文件」），看起來就像按鈕跑錯地方。留著當保險。
+        // 想改用別的檔案管理員（例如 Directory Opus）不必動這裡 —— 由該程式自己的
+        // Explorer Replacement 設定在系統層攔截，程式碼只管把路徑交給 explorer.exe。
         await Process.run('explorer.exe', [dir.replaceAll('/', r'\')]);
       }
     } catch (e) {
