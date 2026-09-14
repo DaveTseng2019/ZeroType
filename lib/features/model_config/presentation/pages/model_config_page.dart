@@ -258,7 +258,10 @@ class _LocalProviderPanelState extends State<_LocalProviderPanel> {
   bool _logOpen = false;
   List<String> _log = const [];
   Timer? _poll;
-  Timer? _logTimer;
+
+  /// 按下啟動後，等模型載入的最晚時間。null＝現在沒有在等。
+  DateTime? _startDeadline;
+  bool _visible = false;
 
   @override
   void initState() {
@@ -266,69 +269,72 @@ class _LocalProviderPanelState extends State<_LocalProviderPanel> {
     _autoStart = appPrefs.getBool(AppConstants.localSttAutoStartKey) ?? true;
     _showConsole =
         appPrefs.getBool(AppConstants.localSttShowConsoleKey) ?? false;
+  }
+
+  /// 頁面一顯示就查一次，顯示期間每兩秒再查一次；切到別的頁就停。
+  ///
+  /// notes: 狀態不能只在 initState 查一次。main_shell 用 IndexedStack，七個頁面在
+  ///        開視窗那一刻全部建好，那時端點還在載模型（自動啟動約 20 秒），
+  ///        於是畫面寫著「未啟動」卻辨識得出結果，除非使用者自己按重新檢查。
+  ///        端點也可能是講話時被 ensureRunning 拉起來的，那更不會經過這個頁面。
+  /// notes: Visibility.of 會把這個 widget 登記成 IndexedStack 可見性的相依，
+  ///        切分頁就會回到這裡——不必從 main_shell 拉一條線進來。
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final visible = Visibility.of(context);
+    if (visible == _visible) return;
+    _visible = visible;
+    _poll?.cancel();
+    if (!visible) return;
     _refresh();
+    _poll = Timer.periodic(const Duration(seconds: 2), (_) => _refresh());
   }
 
   @override
   void dispose() {
     _poll?.cancel();
-    _logTimer?.cancel();
     super.dispose();
   }
 
-  /// 展開時每兩秒重讀一次，講完一句就能在這裡看到結果；收合就停掉。
-  void _toggleLog() {
-    setState(() => _logOpen = !_logOpen);
-    _logTimer?.cancel();
-    if (!_logOpen) return;
-    _refresh();
-    _logTimer = Timer.periodic(const Duration(seconds: 2), (_) {
-      if (!mounted) return;
-      setState(() => _log = localSttService.readLog());
-    });
+  void _onLogExpanded(bool open) {
+    setState(() => _logOpen = open);
+    if (open) _refresh();
   }
 
   /// 狀態與記錄一起更新。使用者按「重新檢查」時想知道的就是這兩件事。
+  ///
+  /// 記錄只在展開時讀——收起來的時候沒人看得到，不必每兩秒開一次檔。
   Future<void> _refresh() async {
     final healthy = await localSttService.isHealthy();
-    final log = localSttService.readLog();
-    if (mounted) {
-      setState(() {
-        _running = healthy;
-        _log = log;
-      });
-    }
-  }
-
-  /// 模型載進 GPU 要十秒上下，按下啟動後得持續探測，不然畫面會停在「未啟動」。
-  void _pollUntilRunning() {
-    _poll?.cancel();
-    var elapsed = 0;
-    _poll = Timer.periodic(const Duration(seconds: 2), (timer) async {
-      elapsed += 2;
-      final healthy = await localSttService.isHealthy();
-      final log = localSttService.readLog();
-      if (!mounted) return timer.cancel();
-      setState(() {
-        _running = healthy;
-        _log = log;
-      });
-      if (healthy || elapsed >= 60) {
-        timer.cancel();
-        if (mounted) setState(() => _busy = false);
+    final log = _logOpen ? localSttService.readLog() : _log;
+    if (!mounted) return;
+    final deadline = _startDeadline;
+    setState(() {
+      _running = healthy;
+      _log = log;
+      // 模型載進 GPU 要十秒上下；起來了、或等過頭了，就把轉圈圈收掉。
+      if (deadline != null && (healthy || DateTime.now().isAfter(deadline))) {
+        _startDeadline = null;
+        _busy = false;
       }
     });
   }
 
   Future<void> _start() async {
-    setState(() => _busy = true);
+    setState(() {
+      _busy = true;
+      _startDeadline = DateTime.now().add(const Duration(seconds: 60));
+    });
     await localSttService.ensureRunning();
-    _pollUntilRunning();
+    await _refresh();
   }
 
   Future<void> _stop() async {
-    setState(() => _busy = true);
-    _poll?.cancel();
+    setState(() {
+      _busy = true;
+      _startDeadline = null;
+    });
     await localSttService.shutdown();
     await Future<void>.delayed(const Duration(milliseconds: 500));
     await _refresh();
@@ -407,7 +413,7 @@ class _LocalProviderPanelState extends State<_LocalProviderPanel> {
           ),
           const SizedBox(height: 12),
           Text(
-            '本機辨識不需要 API Key，也不會產生費用，但模型常駐約 1.8 GB 顯示記憶體。'
+            '本機辨識不需要 API Key，但模型常駐會佔用顯示記憶體。'
             '${installed ? '暫時不用本機辨識時按「停止」就能收回。' : ''}',
             style: TextStyle(fontSize: 13, color: cs.onSurface.withAlpha(180), height: 1.5),
           ),
@@ -471,49 +477,52 @@ class _LocalProviderPanelState extends State<_LocalProviderPanel> {
           const Divider(height: 24),
           const _LocalLaunchSettings(),
           const Divider(height: 24),
-          Row(
-            children: [
-              const Text('端點記錄',
-                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-              const SizedBox(width: 8),
-              Text(
-                '每一句的耗時與結果',
-                style: TextStyle(fontSize: 12, color: cs.onSurface.withAlpha(150)),
+          // 展開方式跟上面的「啟動設定」一致：同一張卡片裡只用一種展開控制項。
+          Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              title: Row(
+                children: [
+                  const Text('端點記錄',
+                      style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                  const SizedBox(width: 8),
+                  Text(
+                    '每一句的耗時與結果',
+                    style: TextStyle(fontSize: 12, color: cs.onSurface.withAlpha(150)),
+                  ),
+                ],
               ),
-              const Spacer(),
-              TextButton(
-                onPressed: _toggleLog,
-                style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                child: Text(_logOpen ? '收合' : '展開'),
-              ),
-            ],
-          ),
-          if (_logOpen) ...[
-            const SizedBox(height: 8),
-            Container(
-              width: double.infinity,
-              constraints: const BoxConstraints(maxHeight: 260),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: cs.onSurface.withAlpha(12),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: SingleChildScrollView(
-                reverse: true,
-                child: SelectableText(
-                  _log.isEmpty
-                      ? '（還沒有記錄。端點啟動後才會寫入。）'
-                      : _log.join('\n'),
-                  style: TextStyle(
-                    fontFamily: 'Consolas',
-                    fontSize: 12,
-                    height: 1.6,
-                    color: cs.onSurface.withAlpha(200),
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: const EdgeInsets.only(top: 8),
+              expandedCrossAxisAlignment: CrossAxisAlignment.start,
+              onExpansionChanged: _onLogExpanded,
+              children: [
+                Container(
+                  width: double.infinity,
+                  constraints: const BoxConstraints(maxHeight: 260),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: cs.onSurface.withAlpha(12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: SingleChildScrollView(
+                    reverse: true,
+                    child: SelectableText(
+                      _log.isEmpty
+                          ? '（還沒有記錄。端點啟動後才會寫入。）'
+                          : _log.join('\n'),
+                      style: TextStyle(
+                        fontFamily: 'Consolas',
+                        fontSize: 12,
+                        height: 1.6,
+                        color: cs.onSurface.withAlpha(200),
+                      ),
+                    ),
                   ),
                 ),
-              ),
+              ],
             ),
-          ],
+          ),
         ],
       ),
     );

@@ -27,7 +27,7 @@
 - **系統**：Windows 10/11。自行 build 需要 Flutter 3.x。
 - **權限**：麥克風。
 - **API Key**（用雲端辨識才需要）：[OpenAI](https://platform.openai.com/api-keys)、[Google AI Studio](https://aistudio.google.com/app/apikey) 或 [OpenRouter](https://openrouter.ai/keys)。
-- **本機辨識**：需要另外安裝辨識端點（見下方[安裝本機辨識](#-安裝本機辨識選用)）與一張 NVIDIA 顯示卡，模型常駐約 1.8 GB VRAM。
+- **本機辨識**：需要另外安裝辨識端點（見下方[安裝本機辨識](#-安裝本機辨識選用)）與一張 NVIDIA 顯示卡，模型常駐會佔用 VRAM。
 
 ---
 
@@ -81,7 +81,7 @@ uv pip install fastapi uvicorn python-multipart opencc
 - **放在 `%USERPROFILE%\LocalSTT` 就不必填任何設定。** ZeroType 也會找執行檔旁邊與 `%LOCALAPPDATA%`。放在別處的人用「啟動設定（進階）」自己指定程式路徑。
 - 偵測的依據是資料夾裡有沒有 `shim.py`，直譯器固定取 `repo\.venv\Scripts\python.exe`。
 - 端點預設監聽 `http://127.0.0.1:8123`，只聽本機。
-- 不用的時候按「停止」就把那 1.8 GB VRAM 收回來。
+- 不用的時候按「停止」就把 VRAM 收回來。
 
 詳細說明與熱詞行為看 [LocalSTT](https://github.com/DaveTseng2019/LocalSTT) 的 README。
 
