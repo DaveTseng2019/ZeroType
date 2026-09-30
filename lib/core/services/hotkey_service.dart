@@ -5,6 +5,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 typedef HotkeyCallback = Future<void> Function();
 
+const _keyboardChannel = MethodChannel('com.zerotype.app/keyboard');
+
 /// 三組全域熱鍵。[prefsKey] 是它在 SharedPreferences 裡的鍵名，改名會讓
 /// 使用者已經設好的熱鍵退回預設值。
 enum HotkeyKind {
@@ -125,6 +127,11 @@ class HotkeyService {
         keyDownHandler: (_) {
           if (_isPaused) return; // Dart-level guard against in-flight callbacks
           print('[HotkeyService] ${kind.name} hotkey activated!');
+          // 熱鍵的主鍵被系統吃掉，前景程式只看到「單獨按一下 Alt」—— Chrome 會把
+          // 焦點移到選單，之後的 Ctrl+V 就進不了網頁。要趁 Alt 還按著時處理。
+          _keyboardChannel
+              .invokeMethod<void>('suppressMenuKey')
+              .catchError((_) {}); // macOS 端沒有這個方法，忽略
           _callbacks[kind]?.call();
         },
       );

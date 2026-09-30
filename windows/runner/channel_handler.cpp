@@ -313,6 +313,28 @@ static bool SimulatePaste(bool press_enter) {
   return true;
 }
 
+// 熱鍵觸發時，趁 Alt／Win 還按著補送一個沒有指派功能的按鍵（vkE8）。
+//
+// RegisterHotKey 會吃掉熱鍵的主鍵，前景程式只收到 Alt 按下、Alt 放開，當成
+// 「單獨按一下 Alt」—— Chrome 因此把焦點移到瀏覽器選單，網頁收不到後續的 Ctrl+V
+// （2026-10-01 在 Google 翻譯實測：Alt 放開的同一毫秒 window.blur，之後沒有任何按鍵
+// 事件）。中間夾一個按鍵，放開時就不再是單獨的 Alt；Win 鍵的開始選單同理。
+//
+// notes: 呼叫來自 Dart 的熱鍵 callback，要繞一趟 MethodChannel。使用者若在那幾毫秒內
+//        就放開 Alt，選單已經被觸發，這裡只能不做事。真的踩到再改成在原生端攔 WM_HOTKEY。
+static void SuppressMenuKey() {
+  const bool held = (GetAsyncKeyState(VK_MENU) & 0x8000) ||
+                    (GetAsyncKeyState(VK_LWIN) & 0x8000) ||
+                    (GetAsyncKeyState(VK_RWIN) & 0x8000);
+  if (!held) return;
+  INPUT inputs[2] = {};
+  inputs[0].type = INPUT_KEYBOARD;
+  inputs[0].ki.wVk = 0xE8;
+  inputs[1] = inputs[0];
+  inputs[1].ki.dwFlags = KEYEVENTF_KEYUP;
+  SendInput(2, inputs, sizeof(INPUT));
+}
+
 // ── Esc 取消錄音的低階鍵盤鉤子 ──────────────────────────────────────────
 //
 // 只在錄音時（g_cancel_hotkey_armed）通知 Dart，其餘時間看到 Esc 一樣直接放行，
@@ -358,6 +380,9 @@ void SetupChannels(flutter::BinaryMessenger* messenger) {
           result->Success(flutter::EncodableValue(SimulatePaste(press_enter)));
         } else if (call.method_name() == "describePasteTarget") {
           result->Success(flutter::EncodableValue(DescribePasteTarget()));
+        } else if (call.method_name() == "suppressMenuKey") {
+          SuppressMenuKey();
+          result->Success(nullptr);
         } else if (call.method_name() == "rememberPasteTarget") {
           RememberPasteTarget();
           result->Success(nullptr);
