@@ -13,7 +13,7 @@ import 'package:win32/win32.dart';
 const int kRecordSampleRate = 16000;
 
 /// 從 [onCaptureStart]（提示音在那一刻開播）到提示音真的從喇叭出聲之間的延遲。
-/// 外放時要從錄音開頭切掉的長度是「這個值 ＋ 提示音播放總長 ＋ [kBeepTailMs]」。
+/// 外放時要從錄音開頭切掉的長度是「這個值 ＋ 提示音聽得到的長度」。
 ///
 /// notes: 320ms 是實測值，不是規格。量法是對 history_audio 的錄音做 FFT，找
 ///        Speech On.wav 的指紋頻率（933 Hz ＋ 698 Hz）第一次出現的位置；
@@ -21,9 +21,6 @@ const int kRecordSampleRate = 16000;
 ///        這個延遲來自 PlaySoundW 非同步起播與音訊輸出緩衝，換音效卡或改用
 ///        別的播放方式就要重量。
 const int kBeepOnsetDelayMs = 320;
-
-/// 提示音尾巴的餘裕。系統音效多半有殘響，檔案長度到了聲音還沒完全衰減。
-const int kBeepTailMs = 120;
 
 /// 噪音門檻的分析音框長度
 const int _kFrameMs = 20;
@@ -516,8 +513,8 @@ class RecordingService {
     Duration warmupTimeout = Duration.zero,
     /// 真正開始收音的那一刻（提示音在這裡響，才是「可以講了」）
     void Function()? onCaptureStart,
-    /// 開始提示音的播放總長。外放時這段會被錄進去，送辨識前要切掉；
-    /// 實際切掉的是它加上 [kBeepOnsetDelayMs] 與 [kBeepTailMs]。
+    /// 開始提示音聽得到的長度。外放時這段會被錄進去，送辨識前要切掉；
+    /// 實際切掉的是它加上 [kBeepOnsetDelayMs]。
     /// 傳 [Duration.zero]（音效關閉時）就完全不切。
     Duration startSoundDuration = Duration.zero,
   }) async {
@@ -533,7 +530,7 @@ class RecordingService {
     _trimLeading = startSoundDuration <= Duration.zero
         ? Duration.zero
         : startSoundDuration +
-            const Duration(milliseconds: kBeepOnsetDelayMs + kBeepTailMs);
+            const Duration(milliseconds: kBeepOnsetDelayMs);
 
     final device = (deviceId == null || deviceId.isEmpty)
         ? null

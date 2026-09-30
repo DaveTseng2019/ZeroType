@@ -13,7 +13,7 @@ import 'package:zero_type/core/constants/app_constants.dart';
 /// 音效播完至少要有這麼長，太短的系統音效聽起來像沒放到，用重播頂到這個長度。
 ///
 /// 800ms 這個值是被開始提示音夾出來的：門檻以上只播一次，而開始提示音每多播
-/// 一次，[startSoundPlaybackDuration] 就多一份，錄音開頭要跟著多切掉一份
+/// 一次，[SoundService.startSoundAudibleDuration] 就多一份檔長，錄音開頭要跟著多切掉一份
 /// （見 recording_service 的 trimLeadingPcm）。預設的 Speech On.wav 實測 836ms，
 /// 訂 800ms 讓它只播一次；再低就會有真的太短的音效變成只播一次而聽不清楚。
 const Duration kMinSoundDuration = Duration(milliseconds: 800);
@@ -45,6 +45,63 @@ Duration? wavDuration(Uint8List bytes) {
   }
   if (byteRate == null || byteRate == 0 || dataSize == null) return null;
   return Duration(milliseconds: (dataSize * 1000 / byteRate).round());
+}
+
+/// 音效「聽得到」的長度：最後一個還在峰值 −20 dB 以內的 20ms 音框的結尾。
+///
+/// 系統音效檔尾巴常拖著一大段殘響。Speech On.wav 檔長 836ms，300ms 之後就比
+/// 最響的音框低 20 dB 以上。錄音開頭要切的是這一段，不是檔長——切到檔長會把使用者
+/// 聽到「叮」就開口的第一個字一起切掉（2026-10-01 實測：history_audio 有 10/25 筆
+/// 開頭第 0ms 就是人聲，辨識結果都缺了開頭的字；刻意馬上開口時人聲最早在 1100ms）。
+///
+/// 只看 16-bit PCM 的第一個聲道；其他格式或解析失敗回 null。
+Duration? wavAudibleDuration(Uint8List bytes) {
+  if (bytes.length < 12) return null;
+  final bd = ByteData.sublistView(bytes);
+  if (bd.getUint32(0, Endian.big) != 0x52494646 /* RIFF */ ||
+      bd.getUint32(8, Endian.big) != 0x57415645 /* WAVE */) {
+    return null;
+  }
+
+  var offset = 12;
+  int? format, sampleRate, blockAlign, bits, dataOffset, dataSize;
+  while (offset + 8 <= bytes.length) {
+    final id = bd.getUint32(offset, Endian.big);
+    final size = bd.getUint32(offset + 4, Endian.little);
+    if (id == 0x666d7420 /* fmt  */ && offset + 24 <= bytes.length) {
+      format = bd.getUint16(offset + 8, Endian.little);
+      sampleRate = bd.getUint32(offset + 12, Endian.little);
+      blockAlign = bd.getUint16(offset + 20, Endian.little);
+      bits = bd.getUint16(offset + 22, Endian.little);
+    } else if (id == 0x64617461 /* data */) {
+      dataOffset = offset + 8;
+      dataSize = min(size, bytes.length - dataOffset);
+    }
+    offset += 8 + size + (size.isOdd ? 1 : 0);
+    if (format != null && dataOffset != null) break;
+  }
+  if (format != 1 || bits != 16 || dataOffset == null || dataSize == null ||
+      sampleRate == null || sampleRate == 0 ||
+      blockAlign == null || blockAlign == 0) {
+    return null;
+  }
+
+  final frameSamples = sampleRate * 20 ~/ 1000;
+  final totalSamples = dataSize ~/ blockAlign;
+  final rms = <double>[];
+  for (var start = 0; start < totalSamples; start += frameSamples) {
+    final end = min(start + frameSamples, totalSamples);
+    var sum = 0.0;
+    for (var i = start; i < end; i++) {
+      final s = bd.getInt16(dataOffset + i * blockAlign, Endian.little);
+      sum += s * s.toDouble();
+    }
+    rms.add(sqrt(sum / (end - start)));
+  }
+  if (rms.isEmpty) return null;
+  final floor = rms.reduce(max) / 10; // −20 dB
+  final last = rms.lastIndexWhere((r) => r >= floor);
+  return Duration(milliseconds: (last + 1) * 20);
 }
 
 /// 音效實際長度不到 [minDuration] 就重播頂到夠長；長度未知（解析失敗）就當作
@@ -146,6 +203,17 @@ Duration? wavDurationOf(String path) {
   }
 }
 
+/// 設定值對應到的音檔「聽得到」的長度，見 [wavAudibleDuration]。
+Duration? wavAudibleDurationOf(String path) {
+  final wavPath = windowsWavPathFor(path);
+  if (wavPath == null) return null;
+  try {
+    return wavAudibleDuration(File(wavPath).readAsBytesSync());
+  } catch (_) {
+    return null;
+  }
+}
+
 const String _iidAudioEndpointVolume = '{5CDF2C82-841E-4546-9722-0CF74078229A}';
 
 /// 系統主音量。win32 5.15 沒有 IAudioEndpointVolume 的綁定，這裡只手接出用得到的
@@ -222,15 +290,17 @@ class SoundService {
     await _play(startSoundPath);
   }
 
-  /// 開始提示音實際會佔用的播放時間（檔長 × 重播次數，見 [repeatCountFor]）。
+  /// 開始提示音「聽得到」的總長：前面每次重播佔滿檔長，最後一次只算到
+  /// [wavAudibleDuration]（見 [repeatCountFor]）。
   /// 外放時這段會被麥克風錄進去，錄音端要據此把開頭切掉。
   /// 音效關閉、非 Windows、檔案不存在或長度解析失敗都回 [Duration.zero]
   /// —— 猜錯的下限是「不切」，寧可留下提示音也不要吃掉使用者講的話。
-  Duration get startSoundPlaybackDuration {
+  Duration get startSoundAudibleDuration {
     if (!soundEnabled || !Platform.isWindows) return Duration.zero;
     final duration = wavDurationOf(startSoundPath);
-    if (duration == null) return Duration.zero;
-    return duration * repeatCountFor(duration);
+    final audible = wavAudibleDurationOf(startSoundPath);
+    if (duration == null || audible == null) return Duration.zero;
+    return duration * (repeatCountFor(duration) - 1) + audible;
   }
 
   Future<void> playStopSound() async {

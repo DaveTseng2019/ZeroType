@@ -201,7 +201,7 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
           warmupTimeout: warmupTimeout,
           // 外放時麥克風一定錄得到提示音，錄音端據此把開頭切掉。
           // 不分裝置一律切 —— 用耳機時開頭本來就沒有人聲，切掉沒有損失。
-          startSoundDuration: soundService.startSoundPlaybackDuration,
+          startSoundDuration: soundService.startSoundAudibleDuration,
           onCaptureStart: () {
             if (!ref.mounted || _cancelled) return;
             unawaited(soundService.playStartSound());

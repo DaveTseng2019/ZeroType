@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -59,6 +60,45 @@ void main() {
 
     test('太短、連 header 都不到回 null', () {
       expect(wavDuration(Uint8List(4)), isNull);
+    });
+  });
+
+  group('wavAudibleDuration（錄音開頭要切多長）', () {
+    // 16kHz mono：每個 20ms 音框 320 個取樣，依 [levels] 逐框填入同一個振幅
+    Uint8List wavWithFrames(List<int> levels) {
+      const sampleRate = 16000;
+      final wav = makeWav(byteRate: sampleRate * 2, dataSize: levels.length * 640);
+      final bd = ByteData.sublistView(wav);
+      for (var f = 0; f < levels.length; f++) {
+        for (var i = 0; i < 320; i++) {
+          bd.setInt16(44 + (f * 320 + i) * 2, levels[f], Endian.little);
+        }
+      }
+      return wav;
+    }
+
+    // 切到殘響結束就會吃掉使用者聽到「叮」就開口的第一個字；
+    // 殘響比峰值低 20 dB 以上，錄進去也壓不過人聲
+    test('只算到最後一個在峰值 −20 dB 以內的音框，殘響不算', () {
+      // 3 框響（60ms）＋ 1 框 −14 dB ＋ 10 框 −30 dB 的殘響
+      final wav = wavWithFrames([10000, 10000, 10000, 2000, ...List.filled(10, 300)]);
+      expect(wavAudibleDuration(wav), const Duration(milliseconds: 80));
+    });
+
+    test('非 WAV 回 null，呼叫端就不切', () {
+      expect(wavAudibleDuration(Uint8List.fromList(List.filled(16, 1))), isNull);
+    });
+
+    // 預設提示音的實際檔案。檔長 836ms，聽得到的部分約 300ms。
+    // 2026-10-01 實測：聽到提示音就刻意馬上開口，人聲最早出現在錄音的 1100ms。
+    // 切除量＝320ms 延遲＋這個值，超過 400 就逼近那條線；回到用檔長切（1276ms）
+    // 已經證實會吃掉開頭的字
+    test('Speech On.wav 聽得到的長度遠短於檔長',
+        skip: !File(r'C:\Windows\Media\Speech On.wav').existsSync(), () {
+      final bytes = File(r'C:\Windows\Media\Speech On.wav').readAsBytesSync();
+      final audible = wavAudibleDuration(bytes)!;
+      expect(audible.inMilliseconds, lessThan(400));
+      expect(audible.inMilliseconds, greaterThan(100));
     });
   });
 
