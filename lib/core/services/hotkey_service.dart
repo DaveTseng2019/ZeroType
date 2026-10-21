@@ -1,9 +1,17 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:hotkey_manager/hotkey_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+// ignore: implementation_imports
+import 'package:uni_platform/src/extensions/keyboard_key.dart';
+import 'package:win32/win32.dart';
 
 typedef HotkeyCallback = Future<void> Function();
+
+/// 這組熱鍵現在能不能註冊。false = 已經被其他程式佔用。
+typedef HotkeyProbe = bool Function(HotKey hotkey);
 
 const _keyboardChannel = MethodChannel('com.zerotype.app/keyboard');
 
@@ -25,9 +33,40 @@ enum HotkeyKind {
 }
 
 class HotkeyService {
-  HotkeyService({required SharedPreferences prefs}) : _prefs = prefs;
+  HotkeyService({required SharedPreferences prefs, HotkeyProbe? probe})
+      : _prefs = prefs,
+        _probe = probe ?? _probeRegisterHotKey;
 
   final SharedPreferences _prefs;
+  final HotkeyProbe _probe;
+
+  /// 註冊不到的熱鍵（被其他程式佔用）。設定頁據此顯示警告。
+  final conflicts = ValueNotifier<Set<HotkeyKind>>(const {});
+
+  /// 用同一組按鍵先試註冊一次再立刻取消。
+  ///
+  /// notes: hotkey_manager_windows 0.2.0 不檢查 RegisterHotKey 的回傳值，一律回報成功，
+  ///   熱鍵被佔用時完全沒有跡象。這裡自己試一次補上。試和真正註冊之間有幾毫秒空檔，
+  ///   別的程式剛好在那時候搶走的話仍會漏報。套件改成回報失敗時就拿掉這段。
+  static bool _probeRegisterHotKey(HotKey hotkey) {
+    if (!Platform.isWindows) return true;
+    final vk = hotkey.physicalKey.keyCode;
+    if (vk == null) return true;
+    var mods = MOD_NOREPEAT;
+    for (final m in hotkey.modifiers ?? const <HotKeyModifier>[]) {
+      mods |= switch (m) {
+        HotKeyModifier.alt => MOD_ALT,
+        HotKeyModifier.control => MOD_CONTROL,
+        HotKeyModifier.shift => MOD_SHIFT,
+        HotKeyModifier.meta => MOD_WIN,
+        _ => 0,
+      };
+    }
+    const probeId = 0xBFFE;
+    if (RegisterHotKey(NULL, probeId, mods, vk) == 0) return false;
+    UnregisterHotKey(NULL, probeId);
+    return true;
+  }
 
   static final Map<HotkeyKind, HotKey> _defaults = {
     HotkeyKind.record: HotKey(
@@ -121,7 +160,14 @@ class HotkeyService {
 
   Future<void> _registerCurrent() async {
     print('[HotkeyService] Registering: $_hotkeys');
+    final taken = <HotkeyKind>{};
     for (final kind in HotkeyKind.values) {
+      // 呼叫端都先 unregisterAll 過，這裡試得到的佔用者一定是別的程式。
+      if (!_probe(hotkeyOf(kind))) {
+        print('[HotkeyService] ${kind.name} hotkey is taken by another program');
+        taken.add(kind);
+        continue;
+      }
       await hotKeyManager.register(
         hotkeyOf(kind),
         keyDownHandler: (_) {
@@ -136,6 +182,7 @@ class HotkeyService {
         },
       );
     }
+    conflicts.value = taken;
   }
 
   Future<void> pause() async {

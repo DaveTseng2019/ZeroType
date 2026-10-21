@@ -25,6 +25,8 @@ dependencies:
 
   # Global hotkey
   hotkey_manager: ^0.2.3
+  # 熱鍵的 Windows 虛擬鍵碼（hotkey_service 試註冊用）；本來就是傳遞依賴，改成直接依賴
+  uni_platform: ^0.1.3
 
   # System tray
   tray_manager: ^0.5.2

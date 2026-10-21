@@ -19,6 +19,7 @@ import 'core/state/zero_type_state.dart';
 import 'core/theme/app_theme.dart';
 import 'core/services/hotkey_service.dart';
 import 'core/theme/theme_controller.dart';
+import 'features/log/log_controller.dart';
 import 'features/phrases/phrase_picker.dart';
 import 'shared/widgets/main_shell.dart';
 
@@ -155,6 +156,15 @@ class _AppInitializerState extends ConsumerState<_AppInitializer>
     _hotkeyService.setCallback(HotkeyKind.record, _onHotkeyActivated);
     _hotkeyService.setCallback(HotkeyKind.quick, _onQuickHotkeyActivated);
     _hotkeyService.setCallback(HotkeyKind.phrase, _onPhraseHotkeyActivated);
+
+    // 熱鍵被其他程式佔用時，背景啟動的 ZeroType 沒有任何跡象，所以寫紀錄並開主視窗。
+    final taken = _hotkeyService.conflicts.value;
+    if (taken.isNotEmpty) {
+      final names = taken.map((k) => k.name).join('、');
+      ref.read(logControllerProvider.notifier).error(
+          '快捷鍵被其他程式佔用，無法使用：$names。請到設定頁換一組。');
+      await showMainWindow();
+    }
 
     await _trayService.initialize(
       onShowWindow: showMainWindow,

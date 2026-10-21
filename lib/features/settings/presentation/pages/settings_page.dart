@@ -666,7 +666,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
     required HotKey hotkey,
     required HotkeyKind kind,
   }) {
-    return InkWell(
+    return ValueListenableBuilder<Set<HotkeyKind>>(
+      valueListenable: hotkeyService.conflicts,
+      builder: (context, conflicts, _) => InkWell(
       onTap: () => ref
           .read(settingsControllerProvider.notifier)
           .startRecordingHotkey(kind),
@@ -674,7 +676,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
       child: _SettingTile(
         icon: icon,
         title: title,
-        subtitle: subtitle,
+        subtitle: conflicts.contains(kind)
+            ? '⚠ 這組快捷鍵已被其他程式佔用，目前無法使用。請點此換一組。'
+            : subtitle,
         trailing: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
@@ -687,7 +691,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
           child: _buildHotkeyDisplay(context, hotkey),
         ),
       ),
-    );
+    ));
   }
 
   Widget _buildHotkeyDisplay(BuildContext context, HotKey hotkey) {
