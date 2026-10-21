@@ -82,6 +82,8 @@ uv pip install fastapi uvicorn python-multipart opencc
 - 偵測的依據是資料夾裡有沒有 `shim.py`，直譯器固定取 `repo\.venv\Scripts\python.exe`。
 - 端點預設監聽 `http://127.0.0.1:8123`，只聽本機。
 - 不用的時候按「停止」就把 VRAM 收回來。
+- LocalSTT 也能改用 FireRedASR2-AED 引擎（中文詞較準，英文詞較差，不吃字典詞彙）。它用另一個 Python 環境，裝法與「啟動設定（進階）」要填的值寫在 LocalSTT 的 README「FireRed 引擎」一節。
+- 「模型」選單在本機服務商底下只是標籤，**不會切換引擎**。實際跑哪一個，由啟動設定的參數決定；換了引擎，選單也要自己改成同一個，紀錄才會標對。
 
 詳細說明與熱詞行為看 [LocalSTT](https://github.com/DaveTseng2019/LocalSTT) 的 README。
 

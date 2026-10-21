@@ -27,6 +27,9 @@ const Map<String, String> kModelNames = {
   // notes: 本機推論沒有 token 計價，刻意不列進 kModelPricing——calculateCost 回 null，
   //        費用欄位就不顯示。
   'moss-transcribe-diarize': 'MOSS Transcribe Diarize',
+  // notes: 本機的模型選單只是標籤。實際跑哪個引擎由「啟動設定（進階）」的參數決定
+  //        （LocalSTT 的 --engine），選單選哪一個都不會切換引擎。
+  'fireredasr2-aed': 'FireRedASR2-AED',
   'gemini-2.5-flash': 'Gemini 2.5 Flash',
   'gemini-3-flash-preview': 'Gemini 3 Flash Preview',
   'google/gemini-2.5-flash': 'Gemini 2.5 Flash',
