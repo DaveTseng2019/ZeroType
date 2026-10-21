@@ -48,6 +48,19 @@ const Map<String, String> kModelNames = {
   'xiaomi/mimo-v2.5': '小米 MiMo-V2.5',
 };
 
+/// 紀錄頁每句前面標的模型簡稱，只要認得出是哪個模型就好。沒列的退回 [kModelNames]。
+const Map<String, String> kModelShortNames = {
+  'moss-transcribe-diarize': 'MOSS',
+  'fireredasr2-aed': 'FireRed',
+  'gpt-transcribe': 'GPT',
+  'gpt-4o-transcribe': '4o',
+  'gpt-4o-mini-transcribe': '4o-mini',
+  'whisper-1': 'Whisper',
+};
+
+String modelShortName(String modelId) =>
+    kModelShortNames[modelId] ?? kModelNames[modelId] ?? modelId;
+
 double? calculateCost(String modelId, int? inputTokens, int? outputTokens) {
   final pricing = kModelPricing[modelId];
   if (pricing == null || inputTokens == null || outputTokens == null) return null;

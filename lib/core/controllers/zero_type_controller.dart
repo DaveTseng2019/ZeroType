@@ -550,7 +550,8 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
         unawaited(soundService.playFailedSound());
       }
 
-      _log.info(result.text);
+      // 模型不只一個可選，紀錄要看得出這句是哪個模型辨識的
+      _log.info('[${modelShortName(config.modelId ?? '')}] ${result.text}');
       state = const ZeroTypeState();
       await _hideNativeOverlay();
     } catch (e, st) {
