@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:zero_type/core/constants/model_pricing.dart';
 import 'package:zero_type/core/di/injection.dart';
 import 'package:zero_type/core/constants/app_constants.dart';
+import 'package:zero_type/core/services/local_stt_service.dart' show LocalSttHealth;
 import '../controllers/model_config_controller.dart';
 import '../../entities/ai_provider.dart';
 
@@ -186,21 +187,7 @@ class _SpeechConfigSection extends ConsumerWidget {
                 );
               }).toList(),
             ),
-            // 本機服務商沒有金鑰可填，也沒有可測試的對象，整塊隱藏。
-            if (state.providerId != 'local') ...[
-              const SizedBox(height: 24),
-              _ApiKeyInput(
-                providerId: state.providerId ?? '',
-                initialValue: state.apiKey ?? '',
-                onSave: (val) => ref.read(speechProviderControllerProvider.notifier).saveApiKey(val),
-              ),
-            ] else ...[
-              const SizedBox(height: 24),
-              // key 綁著模型 id：換服務商或換模型都會重建這個面板，
-              // 於是 initState 會重新探一次端點狀態。使用者剛點過模型時，
-              // 最想知道的就是「那個模型現在跑得起來嗎」。
-              _LocalProviderPanel(key: ValueKey('local-${state.modelId}')),
-            ],
+            // 模型選單放在金鑰／本機端點之前：先選模型，再看那個模型怎麼連、跑不跑得起來。
             const SizedBox(height: 24),
             Row(
               children: [
@@ -221,6 +208,21 @@ class _SpeechConfigSection extends ConsumerWidget {
                 }
               },
             ),
+            // 本機服務商沒有金鑰可填，也沒有可測試的對象，整塊隱藏。
+            if (state.providerId != 'local') ...[
+              const SizedBox(height: 24),
+              _ApiKeyInput(
+                providerId: state.providerId ?? '',
+                initialValue: state.apiKey ?? '',
+                onSave: (val) => ref.read(speechProviderControllerProvider.notifier).saveApiKey(val),
+              ),
+            ] else ...[
+              const SizedBox(height: 24),
+              // key 綁著模型 id：換服務商或換模型都會重建這個面板，
+              // 於是 initState 會重新探一次端點狀態。使用者剛點過模型時，
+              // 最想知道的就是「那個模型現在跑得起來嗎」。
+              _LocalProviderPanel(key: ValueKey('local-${state.modelId}')),
+            ],
             const SizedBox(height: 24),
             _AdvancedConfigSection(
               providerId: state.providerId ?? '',
@@ -252,6 +254,9 @@ class _LocalProviderPanel extends StatefulWidget {
 class _LocalProviderPanelState extends State<_LocalProviderPanel> {
   /// null 表示還在確認。
   bool? _running;
+
+  /// 最近一次 /health 的內容，用來顯示啟動時間。
+  LocalSttHealth? _health;
   bool _busy = false;
   late bool _autoStart;
   late bool _showConsole;
@@ -306,12 +311,14 @@ class _LocalProviderPanelState extends State<_LocalProviderPanel> {
   ///
   /// 記錄只在展開時讀——收起來的時候沒人看得到，不必每兩秒開一次檔。
   Future<void> _refresh() async {
-    final healthy = await localSttService.isHealthy();
+    final health = await localSttService.health();
+    final healthy = health?.ok ?? false;
     final log = _logOpen ? localSttService.readLog() : _log;
     if (!mounted) return;
     final deadline = _startDeadline;
     setState(() {
       _running = healthy;
+      _health = health;
       _log = log;
       // 模型載進 GPU 要十秒上下；起來了、或等過頭了，就把轉圈圈收掉。
       if (deadline != null && (healthy || DateTime.now().isAfter(deadline))) {
@@ -339,6 +346,19 @@ class _LocalProviderPanelState extends State<_LocalProviderPanel> {
     await Future<void>.delayed(const Duration(milliseconds: 500));
     await _refresh();
     if (mounted) setState(() => _busy = false);
+  }
+
+  /// 「啟動於 11:37:03，載入 10.0 秒」。端點沒回報啟動時間（舊版 shim）就是 null。
+  String? _startedText() {
+    final at = _health?.startedAt;
+    if (at == null) return null;
+    String two(int v) => v.toString().padLeft(2, '0');
+    final now = DateTime.now();
+    final sameDay = at.year == now.year && at.month == now.month && at.day == now.day;
+    final when = '${sameDay ? '' : '${at.month}/${at.day} '}'
+        '${two(at.hour)}:${two(at.minute)}:${two(at.second)}';
+    final load = _health?.loadSeconds;
+    return load == null ? '啟動於 $when' : '啟動於 $when，載入 ${load.toStringAsFixed(1)} 秒';
   }
 
   @override
@@ -411,6 +431,16 @@ class _LocalProviderPanelState extends State<_LocalProviderPanel> {
                 ),
             ],
           ),
+          if (running == true && _startedText() != null) ...[
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.only(left: 26),
+              child: Text(
+                _startedText()!,
+                style: TextStyle(fontSize: 12, color: cs.onSurface.withAlpha(150)),
+              ),
+            ),
+          ],
           const SizedBox(height: 12),
           Text(
             '本機辨識不需要 API Key，但模型常駐會佔用顯示記憶體。'

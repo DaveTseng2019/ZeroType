@@ -24,6 +24,9 @@ final _defaultOrigin = Uri.parse(kLocalTranscriptionUrl).origin;
 ///        PseudoConsoleWindow，使用者關掉它就等於把端點殺掉。
 ///        要藏就得由端點自己藏，見 _hideConsoleFlag。
 
+/// 端點 /health 的內容。startedAt／loadSeconds 舊版端點沒有，是 null。
+typedef LocalSttHealth = ({bool ok, DateTime? startedAt, double? loadSeconds});
+
 /// 啟動參數的切法：認雙引號，其餘照空白切。
 final _argPattern = RegExp(r'"([^"]*)"|(\S+)');
 
@@ -302,7 +305,13 @@ class LocalSttService {
   }
 
   /// 端點是否已經可以接受辨識請求。不管是誰啟動的。
-  Future<bool> isHealthy() async {
+  Future<bool> isHealthy() async => (await health())?.ok ?? false;
+
+  /// /health 的內容；連不上就是 null。
+  ///
+  /// notes: startedAt／loadSeconds 是 LocalSTT 2026-10-21 起才回報的欄位。舊版 shim 或別的
+  ///        端點沒有這兩欄，就是 null，設定頁不顯示啟動時間即可，不算錯誤。
+  Future<LocalSttHealth?> health() async {
     try {
       final response = await _dio.get<dynamic>(
         healthUrl,
@@ -312,9 +321,18 @@ class LocalSttService {
         ),
       );
       final data = response.data;
-      return data is Map && data['ok'] == true;
+      if (data is! Map) return null;
+      final started = data['started_at'];
+      final load = data['load_seconds'];
+      return (
+        ok: data['ok'] == true,
+        startedAt: started is num
+            ? DateTime.fromMillisecondsSinceEpoch((started * 1000).round())
+            : null,
+        loadSeconds: load is num ? load.toDouble() : null,
+      );
     } catch (_) {
-      return false;
+      return null;
     }
   }
 }
