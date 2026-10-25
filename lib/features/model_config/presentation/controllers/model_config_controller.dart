@@ -82,6 +82,7 @@ class SpeechProviderController extends AsyncNotifier<SpeechProviderConfig> {
     return speechService.testApiKey(
       provider: state.providerId!,
       apiKey: apiKey.trim(),
+      customEndpoint: state.customEndpoint,
     );
   }
 

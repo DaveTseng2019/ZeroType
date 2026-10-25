@@ -24,6 +24,29 @@
       ]
     },
     {
+      "id": "azure",
+      "name": "Azure OpenAI",
+      "url": "https://ai.azure.com/",
+      "models": [
+        {
+          "id": "gpt-transcribe",
+          "name": "GPT Transcribe"
+        },
+        {
+          "id": "gpt-4o-transcribe",
+          "name": "GPT-4o Transcribe"
+        },
+        {
+          "id": "gpt-4o-mini-transcribe",
+          "name": "GPT-4o Mini Transcribe"
+        },
+        {
+          "id": "whisper",
+          "name": "Whisper"
+        }
+      ]
+    },
+    {
       "id": "gemini",
       "name": "Gemini",
       "url": "https://aistudio.google.com/apikey",

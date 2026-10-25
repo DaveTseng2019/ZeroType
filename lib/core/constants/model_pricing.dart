@@ -1,19 +1,47 @@
-const Map<String, ({double inputPerM, double outputPerM})> kModelPricing = {
+/// 每百萬 token 美元價。[audioInputPerM] 不是 null 時，音訊輸入另外計價，
+/// [inputPerM] 只算文字輸入。
+typedef ModelPrice = ({
+  double inputPerM,
+  double outputPerM,
+  double? audioInputPerM,
+});
+
+/// 價目表依服務商分開：同一個模型在不同服務商的價格與計價方式可能不同。
+const Map<String, Map<String, ModelPrice>> kModelPricing = {
   // notes: gpt-transcribe（$0.0045/分鐘）與 whisper-1（$0.006/分鐘）是按時間計價，
-  //        沒有 token 單價，刻意不列——calculateCost 回 null，UI 就不顯示費用
-  'gpt-4o-transcribe': (inputPerM: 2.5, outputPerM: 10.0),
-  'gpt-4o-mini-transcribe': (inputPerM: 1.25, outputPerM: 5.0),
-  'gemini-2.5-flash': (inputPerM: 1.0, outputPerM: 2.5),
-  'gemini-3-flash-preview': (inputPerM: 1.0, outputPerM: 2.5),
+  //        沒有 token 單價，刻意不列——calculateCost 回 null，UI 就不顯示費用。
+  //        官方價目頁只列一種輸入價，不分音訊與文字（2026-10-25 查）。
+  'openai': {
+    'gpt-4o-transcribe': (inputPerM: 2.5, outputPerM: 10.0, audioInputPerM: null),
+    'gpt-4o-mini-transcribe':
+        (inputPerM: 1.25, outputPerM: 5.0, audioInputPerM: null),
+  },
+  // notes: Azure Global Standard 的牌價，來源是 prices.azure.com（2026-10-25 查，
+  //        South India）。音訊輸入比文字輸入貴，要用回應的 audio_tokens 分開算。
+  //        gpt-transcribe（每小時 $0.27）與 whisper 按時間計價，同樣不列。
+  'azure': {
+    'gpt-4o-transcribe': (inputPerM: 2.5, outputPerM: 10.0, audioInputPerM: 6.0),
+    'gpt-4o-mini-transcribe':
+        (inputPerM: 1.25, outputPerM: 5.0, audioInputPerM: 3.0),
+  },
+  'gemini': {
+    'gemini-2.5-flash': (inputPerM: 1.0, outputPerM: 2.5, audioInputPerM: null),
+    'gemini-3-flash-preview':
+        (inputPerM: 1.0, outputPerM: 2.5, audioInputPerM: null),
+  },
   // notes: OpenRouter 的模型一律不列在這裡——價格會變（3.6-flash 就無聲降價一半，
   //        害費用顯示高一倍）。那邊的實際費用由回應的 usage.cost 帶回，選單費率由
   //        /api/v1/models 即時抓、抓不到時用上一次快取（ModelConfigRepository）。
-  //        OpenAI 與 Gemini 原生 API 都不回報金額，也沒有價格查詢端點，只能寫死；
+  //        OpenAI、Azure 與 Gemini 原生 API 都不回報金額，只能寫死；
   //        改價時要手動更新這幾行。
 };
 
+ModelPrice? modelPrice(String providerId, String modelId) =>
+    kModelPricing[providerId]?[modelId];
+
 const Map<String, String> kProviderNames = {
   'openai': 'OpenAI',
+  'azure': 'Azure OpenAI',
   'gemini': 'Gemini',
   'openrouter': 'OpenRouter',
   'local': '本機',
@@ -24,6 +52,8 @@ const Map<String, String> kModelNames = {
   'gpt-4o-transcribe': 'GPT-4o Transcribe',
   'gpt-4o-mini-transcribe': 'GPT-4o Mini Transcribe',
   'whisper-1': 'Whisper',
+  // Azure 的模型名稱就叫 whisper，不帶 -1
+  'whisper': 'Whisper',
   // notes: 本機推論沒有 token 計價，刻意不列進 kModelPricing——calculateCost 回 null，
   //        費用欄位就不顯示。
   'moss-transcribe-diarize': 'MOSS Transcribe Diarize',
@@ -56,16 +86,29 @@ const Map<String, String> kModelShortNames = {
   'gpt-4o-transcribe': '4o',
   'gpt-4o-mini-transcribe': '4o-mini',
   'whisper-1': 'Whisper',
+  'whisper': 'Whisper',
 };
 
 String modelShortName(String modelId) =>
     kModelShortNames[modelId] ?? kModelNames[modelId] ?? modelId;
 
-double? calculateCost(String modelId, int? inputTokens, int? outputTokens) {
-  final pricing = kModelPricing[modelId];
+double? calculateCost(
+  String providerId,
+  String modelId,
+  int? inputTokens,
+  int? outputTokens, {
+  int? audioInputTokens,
+}) {
+  final pricing = modelPrice(providerId, modelId);
   if (pricing == null || inputTokens == null || outputTokens == null) return null;
-  return (inputTokens * pricing.inputPerM + outputTokens * pricing.outputPerM) /
-      1_000_000;
+  final audioPerM = pricing.audioInputPerM;
+  // 音訊分開計價、且回應帶了音訊明細，才拆開算；否則全部照一般輸入價
+  final audio = (audioPerM != null && audioInputTokens != null)
+      ? audioInputTokens.clamp(0, inputTokens)
+      : 0;
+  final inputCost =
+      (inputTokens - audio) * pricing.inputPerM + audio * (audioPerM ?? 0);
+  return (inputCost + outputTokens * pricing.outputPerM) / 1_000_000;
 }
 
 String formatCostUsd(double cost) {

@@ -200,6 +200,7 @@ class _SpeechConfigSection extends ConsumerWidget {
             ),
             const SizedBox(height: 12),
             _ModelDropdown(
+              providerId: selectedProvider.id,
               models: selectedProvider.models,
               selectedModelId: state.modelId,
               onChanged: (val) {
@@ -208,6 +209,15 @@ class _SpeechConfigSection extends ConsumerWidget {
                 }
               },
             ),
+            // Azure 沒有共用的預設位址，端點是必填，所以從進階設定拉出來放在金鑰前面。
+            if (state.providerId == 'azure') ...[
+              const SizedBox(height: 24),
+              _CustomEndpointInput(
+                providerId: 'azure',
+                initialValue: state.customEndpoint ?? '',
+                onSave: (val) => ref.read(speechProviderControllerProvider.notifier).saveCustomEndpoint(val),
+              ),
+            ],
             // 本機服務商沒有金鑰可填，也沒有可測試的對象，整塊隱藏。
             if (state.providerId != 'local') ...[
               const SizedBox(height: 24),
@@ -223,12 +233,14 @@ class _SpeechConfigSection extends ConsumerWidget {
               // 最想知道的就是「那個模型現在跑得起來嗎」。
               _LocalProviderPanel(key: ValueKey('local-${state.modelId}')),
             ],
-            const SizedBox(height: 24),
-            _AdvancedConfigSection(
-              providerId: state.providerId ?? '',
-              customEndpoint: state.customEndpoint ?? '',
-              onSaveCustomEndpoint: (val) => ref.read(speechProviderControllerProvider.notifier).saveCustomEndpoint(val),
-            ),
+            if (state.providerId != 'azure') ...[
+              const SizedBox(height: 24),
+              _AdvancedConfigSection(
+                providerId: state.providerId ?? '',
+                customEndpoint: state.customEndpoint ?? '',
+                onSaveCustomEndpoint: (val) => ref.read(speechProviderControllerProvider.notifier).saveCustomEndpoint(val),
+              ),
+            ],
           ],
         );
       },
@@ -752,11 +764,13 @@ String _trimZero(double v) =>
 
 class _ModelDropdown extends StatelessWidget {
   const _ModelDropdown({
+    required this.providerId,
     required this.models,
     required this.selectedModelId,
     required this.onChanged,
   });
 
+  final String providerId;
   final List<AiModel> models;
   final String? selectedModelId;
   final ValueChanged<String?> onChanged;
@@ -785,9 +799,10 @@ class _ModelDropdown extends StatelessWidget {
                     child: Text(m.name),
                   )).toList(),
           items: models.map((m) {
-            final pricing = kModelPricing[m.id];
+            final pricing = modelPrice(providerId, m.id);
             final inPerM = m.inputPerM ?? pricing?.inputPerM;
             final outPerM = m.outputPerM ?? pricing?.outputPerM;
+            final audioPerM = m.inputPerM == null ? pricing?.audioInputPerM : null;
             final recommended = m.recommended;
             return DropdownMenuItem(
               value: m.id,
@@ -822,7 +837,9 @@ class _ModelDropdown extends StatelessWidget {
                       Text(
                         inPerM == 0 && outPerM == 0
                             ? '免費'
-                            : '輸入 \$${_trimZero(inPerM)}／輸出 \$${_trimZero(outPerM)}（每百萬 token）',
+                            : audioPerM != null
+                                ? '音訊輸入 \$${_trimZero(audioPerM)}／文字輸入 \$${_trimZero(inPerM)}／輸出 \$${_trimZero(outPerM)}（每百萬 token）'
+                                : '輸入 \$${_trimZero(inPerM)}／輸出 \$${_trimZero(outPerM)}（每百萬 token）',
                         style: TextStyle(
                           fontSize: 14,
                           color: cs.onSurface.withAlpha(160),
@@ -881,11 +898,28 @@ class _CustomEndpointInputState extends State<_CustomEndpointInput> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final isAzure = widget.providerId == 'azure';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('自建模型接口', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+        if (isAzure) ...[
+          Row(
+            children: [
+              const Text('Azure 資源端點', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
+              const SizedBox(width: 4),
+              const Text('*', style: TextStyle(color: Colors.redAccent, fontSize: 18, fontWeight: FontWeight.bold)),
+              const SizedBox(width: 8),
+              Text('(必填)', style: TextStyle(color: Colors.redAccent.withAlpha(150), fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '模型選單的名稱要和 Azure 上的部署名稱相同。',
+            style: TextStyle(color: cs.onSurface.withAlpha(150), fontSize: 12),
+          ),
+        ] else
+          const Text('自建模型接口', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 16)),
         const SizedBox(height: 12),
         Row(
           children: [
@@ -893,7 +927,7 @@ class _CustomEndpointInputState extends State<_CustomEndpointInput> {
               child: TextField(
                 controller: _controller,
                 decoration: InputDecoration(
-                  hintText: '非必填',
+                  hintText: isAzure ? 'https://<資源名稱>.openai.azure.com' : '非必填',
                   hintStyle: TextStyle(color: cs.onSurface.withAlpha(80)),
                   filled: true,
                   fillColor: cs.surface,

@@ -7,10 +7,45 @@ import 'package:dio/dio.dart';
 /// 換 port 的話在設定頁的「自訂端點」覆蓋。
 const kLocalTranscriptionUrl = 'http://127.0.0.1:8123/v1/audio/transcriptions';
 
+/// Azure 部署路徑的 api-version。
+const kAzureApiVersion = '2025-03-01-preview';
+
+/// 由使用者填的 Azure 資源端點取出主機部分。
+///
+/// 接受只有主機（`https://<資源>.openai.azure.com`）或帶 `/openai`、`/openai/v1` 的寫法。
+/// 沒填就丟出可讀的錯誤——Azure 沒有共用的預設位址。
+String _azureBase(String? endpoint) {
+  final base = (endpoint ?? '').trim();
+  if (base.isEmpty) throw Exception('請先填入 Azure 資源端點');
+  return base
+      .replaceFirst(RegExp(r'/+$'), '')
+      .replaceFirst(RegExp(r'/openai(/v1)?$'), '');
+}
+
+/// 轉寫位址。使用者貼的若已經是完整位址就原樣使用。
+///
+/// notes: 走舊版部署路徑，不走 v1 的 `/openai/v1/audio/transcriptions`。
+///        2026-10-25 實測：同一個資源、同一個部署，v1 回 404 DeploymentNotFound，
+///        部署路徑回 200。v1 轉寫在 Azure 上能用之後，可以改回 v1 並拿掉 api-version。
+String azureTranscriptionUrl(String? endpoint, String deployment) {
+  final raw = (endpoint ?? '').trim();
+  if (raw.contains('/audio/transcriptions')) return raw;
+  return '${_azureBase(endpoint)}/openai/deployments/'
+      '${Uri.encodeComponent(deployment)}/audio/transcriptions'
+      '?api-version=$kAzureApiVersion';
+}
+
+/// 金鑰測試用的列模型位址（v1 的這個端點可以用）。
+String azureModelsUrl(String? endpoint) =>
+    '${_azureBase(endpoint)}/openai/v1/models';
+
 typedef TranscriptionResult = ({
   String text,
   int? inputTokens,
   int? outputTokens,
+  // inputTokens 裡屬於音訊的部分。有些服務商音訊與文字輸入分開計價（Azure）；
+  // 回應沒帶明細時留 null，全部輸入照一般輸入價算。
+  int? audioInputTokens,
   // OpenRouter 隨回應帶回這次實際扣款的美元金額（要求 usage.include）。
   // 其餘 provider 沒有這個欄位，留 null 由 kModelPricing 估算。
   double? costUsd,
@@ -54,6 +89,17 @@ class SpeechRecognitionService {
           hotwords: hotwords,
           defaultUrl: kLocalTranscriptionUrl,
         );
+      // Azure OpenAI 也是同一套轉寫協定。差別只有兩處：位址含使用者的資源名稱與部署名稱，
+      // 認證走 api-key 標頭。模型選單的 id 就當部署名稱用。
+      case 'azure':
+        return _transcribeWithOpenAI(
+          audioFilePath: audioFilePath,
+          apiKey: apiKey,
+          model: model,
+          prompt: prompt,
+          customEndpoint: azureTranscriptionUrl(customEndpoint, model),
+          authHeaders: {'api-key': apiKey},
+        );
       case 'gemini':
         return _transcribeWithGemini(
           audioFilePath: audioFilePath,
@@ -83,6 +129,7 @@ class SpeechRecognitionService {
     String? customEndpoint,
     String hotwords = '',
     String defaultUrl = 'https://api.openai.com/v1/audio/transcriptions',
+    Map<String, String>? authHeaders,
   }) async {
     final formData = FormData.fromMap({
       'file': await MultipartFile.fromFile(
@@ -103,7 +150,7 @@ class SpeechRecognitionService {
       url,
       data: formData,
       options: Options(
-        headers: {'Authorization': 'Bearer $apiKey'},
+        headers: authHeaders ?? {'Authorization': 'Bearer $apiKey'},
       ),
     );
 
@@ -120,6 +167,7 @@ class SpeechRecognitionService {
           inputTokens: null,
           outputTokens: null,
           costUsd: null,
+          audioInputTokens: null,
         );
       }
     }
@@ -128,12 +176,15 @@ class SpeechRecognitionService {
     final usageMap = data?['usage'] as Map<String, dynamic>?;
     final inputTokens = usageMap?['input_tokens'] as int?;
     final outputTokens = usageMap?['output_tokens'] as int?;
+    final audioInputTokens =
+        usageMap?['input_token_details']?['audio_tokens'] as int?;
 
     return (
       text: text,
       inputTokens: inputTokens,
       outputTokens: outputTokens,
       costUsd: null,
+      audioInputTokens: audioInputTokens,
     );
   }
 
@@ -214,6 +265,7 @@ class SpeechRecognitionService {
         inputTokens: inputTokens,
         outputTokens: outputTokens,
         costUsd: null,
+        audioInputTokens: null,
       );
     } on DioException catch (e) {
       print('[Gemini] DioException: ${e.message}');
@@ -311,6 +363,7 @@ class SpeechRecognitionService {
         inputTokens: inputTokens,
         outputTokens: outputTokens,
         costUsd: costUsd,
+        audioInputTokens: null,
       );
     } on DioException catch (e) {
       print('[OpenRouter] DioException: ${e.message}');
@@ -365,6 +418,7 @@ class SpeechRecognitionService {
           inputTokens: usageMeta?['promptTokenCount'] as int?,
           outputTokens: usageMeta?['candidatesTokenCount'] as int?,
           costUsd: null,
+          audioInputTokens: null,
         );
       case 'openrouter':
         final url = (customEndpoint != null && customEndpoint.isNotEmpty)
@@ -396,6 +450,7 @@ class SpeechRecognitionService {
           inputTokens: usage?['prompt_tokens'] as int?,
           outputTokens: usage?['completion_tokens'] as int?,
           costUsd: (usage?['cost'] as num?)?.toDouble(),
+          audioInputTokens: null,
         );
       default:
         throw Exception('不支援文字校正的服務商：$provider');
@@ -409,8 +464,12 @@ class SpeechRecognitionService {
   Future<String?> testApiKey({
     required String provider,
     required String apiKey,
+    String? customEndpoint,
   }) async {
     if (apiKey.isEmpty) return '尚未填入 API Key';
+    if (provider == 'azure' && (customEndpoint ?? '').trim().isEmpty) {
+      return '請先填入 Azure 資源端點';
+    }
     final (url, headers) = switch (provider) {
       'openai' => (
           'https://api.openai.com/v1/models',
@@ -425,6 +484,11 @@ class SpeechRecognitionService {
       'openrouter' => (
           'https://openrouter.ai/api/v1/key',
           {'Authorization': 'Bearer $apiKey'},
+        ),
+      // 同時驗證端點與金鑰：主機名稱錯是連線失敗，金鑰錯是 401
+      'azure' => (
+          azureModelsUrl(customEndpoint),
+          {'api-key': apiKey},
         ),
       _ => ('', <String, String>{}),
     };

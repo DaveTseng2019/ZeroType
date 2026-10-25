@@ -342,8 +342,9 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
     // 會被憑空插入（見 buildCorrectionPrompt），格式規則與範例則會在音訊內容偏弱時
     // 被整段當成答案輸出（實測輸出跟 SpeechToText.prompt 的範例一字不差）。
     // 措辭怎麼改都壓不住，所以 chat 型服務商一律兩段式：音訊那段只給最小指令，
-    // 規則、範例、字典全部移到第二段純文字處理。whisper（openai）不吃這套，維持原樣。
-    final isWhisper = config.providerId == 'openai';
+    // 規則、範例、字典全部移到第二段純文字處理。whisper（openai／azure）不吃這套，維持原樣。
+    final isWhisper =
+        config.providerId == 'openai' || config.providerId == 'azure';
     final isLocal = config.providerId == 'local';
     // 一段式：字典在辨識當下就送出，之後不跑第二段純文字校正。
     // 動這一行之前先想清楚——它決定走一段式還是兩段式。新服務商若沒歸類進來，
@@ -403,6 +404,8 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
         inputTokens: _sumTokens(result.inputTokens, corrected.inputTokens),
         outputTokens: _sumTokens(result.outputTokens, corrected.outputTokens),
         costUsd: _sumCost(result.costUsd, corrected.costUsd),
+        // 第二段是純文字，音訊 token 只有第一段有
+        audioInputTokens: result.audioInputTokens,
       );
     } catch (e) {
       // notes: 校正失敗不能吃掉逐字稿，退回第一段結果
@@ -493,6 +496,7 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
               inputTokens: raw.inputTokens,
               outputTokens: raw.outputTokens,
               costUsd: raw.costUsd,
+              audioInputTokens: raw.audioInputTokens,
             );
 
       if (result == null || result.text.isEmpty) {
@@ -516,12 +520,14 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
         model: config.modelId ?? '',
         inputTokens: result.inputTokens,
         outputTokens: result.outputTokens,
-        // API 有回實際扣款金額就用它；沒有的（OpenAI／Gemini）才用本地價目表估算
+        // API 有回實際扣款金額就用它；沒有的（OpenAI／Azure／Gemini）才用本地價目表估算
         costUsd: result.costUsd ??
             calculateCost(
+              config.providerId ?? '',
               config.modelId ?? '',
               result.inputTokens,
               result.outputTokens,
+              audioInputTokens: result.audioInputTokens,
             ),
       );
       await historyRepo.addRecord(record);

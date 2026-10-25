@@ -13,7 +13,7 @@
 ## ✨ 功能特色
 
 - **全局快捷鍵錄音** — 在任何程式裡按 `Alt + Z` 開始，再按一次結束。另有精簡模式（`Alt + X`）：講完安靜 1.5 秒自動結束並補 `Enter` 送出。錄音中有浮動音波提示，`Esc` 取消。
-- **多種辨識後端** — OpenAI、Google Gemini、OpenRouter（一把 Key 通吃多家模型），以及**本機**辨識：不需要 API Key、不產生費用，音檔與文字都不出這台電腦。
+- **多種辨識後端** — OpenAI、Azure OpenAI、Google Gemini、OpenRouter（一把 Key 通吃多家模型），以及**本機**辨識：不需要 API Key、不產生費用，音檔與文字都不出這台電腦。
 - **只錄到噪音就不送辨識** — 用動態範圍（最大聲的一成 ÷ 最安靜的一成）判斷有沒有人在講話。沒人聲的錄音送給 AI，它不會回「沒聽到」，而是憑空編一整段內容出來。
 - **轉錄，不代寫** — 只做最小限度的整理：剔除停頓詞、自動標點、中英混用保留原文不翻譯。規則沒明講要改的一律照原話輸出。命令詞只有「更正」與「換行」兩個。
 - **自訂字典** — 人名、品牌、術語寫進字典，以拼寫校正的方式套用（發音相同且字數相同才替換），不會被憑空插入輸出。
@@ -26,7 +26,7 @@
 
 - **系統**：Windows 10/11。自行 build 需要 Flutter 3.x。
 - **權限**：麥克風。
-- **API Key**（用雲端辨識才需要）：[OpenAI](https://platform.openai.com/api-keys)、[Google AI Studio](https://aistudio.google.com/app/apikey) 或 [OpenRouter](https://openrouter.ai/keys)。
+- **API Key**（用雲端辨識才需要）：[OpenAI](https://platform.openai.com/api-keys)、[Google AI Studio](https://aistudio.google.com/app/apikey) 或 [OpenRouter](https://openrouter.ai/keys)。Azure OpenAI 另外要填資源端點，模型名稱要和部署名稱相同。
 - **本機辨識**：需要另外安裝辨識端點（見下方[安裝本機辨識](#-安裝本機辨識選用)）與一張 NVIDIA 顯示卡，模型常駐會佔用 VRAM。
 
 ---
