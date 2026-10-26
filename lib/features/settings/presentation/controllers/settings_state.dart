@@ -18,6 +18,7 @@ class SettingsState {
     this.isRecordingHotkey = false,
     this.editingHotkey = HotkeyKind.record,
     this.quickAutoEnter = true,
+    this.stripTrailingPeriod = false,
     this.debugLog = false,
     this.soundEnabled = true,
     this.startSound = kDefaultStartSound,
@@ -55,6 +56,9 @@ class SettingsState {
 
   /// 精簡模式貼上後要不要自動按 Enter 送出
   final bool quickAutoEnter;
+
+  /// 句尾句號一律拿掉，不論長短（關閉時只拿短句的）
+  final bool stripTrailingPeriod;
 
   /// 偵錯模式：紀錄一併寫到檔案，並多記貼上目標之類的細節
   final bool debugLog;
@@ -105,6 +109,7 @@ class SettingsState {
     bool? isRecordingHotkey,
     HotkeyKind? editingHotkey,
     bool? quickAutoEnter,
+    bool? stripTrailingPeriod,
     bool? debugLog,
     bool? soundEnabled,
     String? startSound,
@@ -136,6 +141,7 @@ class SettingsState {
       isRecordingHotkey: isRecordingHotkey ?? this.isRecordingHotkey,
       editingHotkey: editingHotkey ?? this.editingHotkey,
       quickAutoEnter: quickAutoEnter ?? this.quickAutoEnter,
+      stripTrailingPeriod: stripTrailingPeriod ?? this.stripTrailingPeriod,
       debugLog: debugLog ?? this.debugLog,
       soundEnabled: soundEnabled ?? this.soundEnabled,
       startSound: startSound ?? this.startSound,

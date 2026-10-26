@@ -57,6 +57,9 @@ class AppConstants {
   /// 精簡模式貼上後要不要自動按 Enter 送出（預設要）
   static const String quickAutoEnterKey = 'quick_auto_enter';
 
+  /// 句尾句號一律拿掉，不論長短（預設關；關閉時只拿短句的，見 stripShortSentencePeriod）
+  static const String stripTrailingPeriodKey = 'strip_trailing_period';
+
   /// 偵錯模式：紀錄一併寫到 [debugLogFileName]，並多記貼上目標之類的細節
   static const String debugLogKey = 'debug_log';
   static const String debugLogFileName = 'debug.log';

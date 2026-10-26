@@ -33,4 +33,32 @@ void main() {
       expect(ZeroTypeController.stripShortSentencePeriod('a.b'), 'a.b');
     });
   });
+
+  // 設定「拿掉句尾句號」打開時：不看長短，一律砍尾端句號
+  group('stripShortSentencePeriod(always: true)', () {
+    test('長句也砍尾端句號', () {
+      expect(
+          ZeroTypeController.stripShortSentencePeriod('今天天氣不錯。', always: true),
+          '今天天氣不錯');
+      expect(
+          ZeroTypeController.stripShortSentencePeriod(
+              'Please run the tests.', always: true),
+          'Please run the tests');
+    });
+
+    test('句中的句號、問號驚嘆號照舊保留', () {
+      expect(
+          ZeroTypeController.stripShortSentencePeriod('先存檔。再測試。', always: true),
+          '先存檔。再測試');
+      expect(ZeroTypeController.stripShortSentencePeriod('真的嗎？', always: true),
+          '真的嗎？');
+      expect(ZeroTypeController.stripShortSentencePeriod('太好了！', always: true),
+          '太好了！');
+    });
+
+    test('本來就沒有句號的原樣通過', () {
+      expect(ZeroTypeController.stripShortSentencePeriod('沒有句號', always: true),
+          '沒有句號');
+    });
+  });
 }

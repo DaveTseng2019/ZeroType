@@ -57,6 +57,8 @@ class SettingsController extends AsyncNotifier<SettingsState> {
         phraseHotkey: hotkeyService.hotkeyOf(HotkeyKind.phrase),
         quickAutoEnter:
             prefs.getBool(AppConstants.quickAutoEnterKey) ?? true,
+        stripTrailingPeriod:
+            prefs.getBool(AppConstants.stripTrailingPeriodKey) ?? false,
         debugLog: prefs.getBool(AppConstants.debugLogKey) ?? false,
         isAccessibilityAuthorized: isAccessibilityAuthorized,
         isMicrophoneAuthorized: isMicrophoneAuthorized,
@@ -217,6 +219,14 @@ class SettingsController extends AsyncNotifier<SettingsState> {
     final currentState = state.value;
     if (currentState != null) {
       state = AsyncData(currentState.copyWith(quickAutoEnter: value));
+    }
+  }
+
+  Future<void> toggleStripTrailingPeriod(bool value) async {
+    await appPrefs.setBool(AppConstants.stripTrailingPeriodKey, value);
+    final currentState = state.value;
+    if (currentState != null) {
+      state = AsyncData(currentState.copyWith(stripTrailingPeriod: value));
     }
   }
 

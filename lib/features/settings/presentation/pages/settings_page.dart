@@ -138,6 +138,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                                   .toggleQuickAutoEnter(val),
                             ),
                           ),
+                          const Divider(height: 1, indent: 56),
+                          _SettingTile(
+                            icon: Icons.format_clear,
+                            title: '拿掉句尾句號',
+                            subtitle: '打開：每句都拿掉句尾句號\n'
+                                '關閉：只拿掉 4 個字以內的短句',
+                            trailing: _SettingSwitch(
+                              value: data.stripTrailingPeriod,
+                              onChanged: (val) => ref
+                                  .read(settingsControllerProvider.notifier)
+                                  .toggleStripTrailingPeriod(val),
+                            ),
+                          ),
                         ],
                       ),
                       loading: () => const _LoadingTile(),

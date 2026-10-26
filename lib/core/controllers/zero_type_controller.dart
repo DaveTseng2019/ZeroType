@@ -290,11 +290,14 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
   ///
   /// notes: 用程式砍不用提示詞——標點是規則檔一路要求的，為了短句去鬆綁那條規則
   /// 會連長句一起失守。只處理句號（。與 .），問號驚嘆號是語氣，留著。
-  static String stripShortSentencePeriod(String text) {
+  ///
+  /// [always]：設定「拿掉句尾句號」打開時不看長短一律砍——在 Claude Code 這類
+  /// 對話框裡打字，句號只是多餘的一個字。
+  static String stripShortSentencePeriod(String text, {bool always = false}) {
     final trimmed = text.trimRight();
     final stripped = trimmed.replaceFirst(RegExp(r'[。.]+$'), '');
     if (stripped.length == trimmed.length) return text; // 本來就沒有句號
-    return stripped.runes.length < 5 ? stripped : text;
+    return always || stripped.runes.length < 5 ? stripped : text;
   }
 
   /// 第二段純文字處理：把使用者調過的格式規則原封不動搬過來，只加一句改寫框架，
@@ -492,7 +495,9 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       final result = raw == null
           ? null
           : (
-              text: stripShortSentencePeriod(raw.text),
+              text: stripShortSentencePeriod(raw.text,
+                  always: appPrefs.getBool(AppConstants.stripTrailingPeriodKey) ??
+                      false),
               inputTokens: raw.inputTokens,
               outputTokens: raw.outputTokens,
               costUsd: raw.costUsd,
