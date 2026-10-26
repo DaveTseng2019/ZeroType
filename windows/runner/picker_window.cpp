@@ -289,6 +289,14 @@ void Paint(HWND hwnd) {
                 DT_SINGLELINE | DT_VCENTER | DT_LEFT | DT_NOPREFIX);
   } else {
     const int rows = VisibleRows();
+    // 流水號欄寬：照最大號碼的位數量一次（"0" 的寬度 × 位數，再留一格空白），
+    // 號碼靠右對齊，文字從同一條線開始。
+    const std::wstring widest =
+        std::wstring(std::to_wstring(g_items.size()).size(), L'0') + L". ";
+    SIZE num_size = {};
+    ::GetTextExtentPoint32W(mem, widest.c_str(), static_cast<int>(widest.size()),
+                            &num_size);
+    const int num_w = num_size.cx;
     for (int i = 0; i < rows; ++i) {
       const int pos = g_scroll + i;
       if (pos >= static_cast<int>(g_matched.size())) break;
@@ -303,7 +311,13 @@ void Paint(HWND hwnd) {
         ::FillRect(mem, &marker, accent);
         ::DeleteObject(accent);
       }
-      RECT text = {pad, top, rc.right - pad, top + row_h};
+      // 流水號是詞彙在完整清單裡的位置（同常用詞彙頁的順序），過濾後號碼不變。
+      RECT num = {pad, top, pad + num_w - Scale(4), top + row_h};
+      const std::wstring num_text = std::to_wstring(g_matched[pos] + 1) + L".";
+      ::SetTextColor(mem, kMuted);
+      ::DrawTextW(mem, num_text.c_str(), static_cast<int>(num_text.size()), &num,
+                  DT_SINGLELINE | DT_VCENTER | DT_RIGHT | DT_NOPREFIX);
+      RECT text = {pad + num_w, top, rc.right - pad, top + row_h};
       const std::wstring label = OneLine(g_items[g_matched[pos]]);
       ::SetTextColor(mem, pos == g_selected ? kForeground : kMuted);
       ::DrawTextW(mem, label.c_str(), static_cast<int>(label.size()), &text,
@@ -380,7 +394,15 @@ void MoveSelection(int delta) {
   HideCursorForKeyboard();
   if (g_matched.empty()) return;
   const int last = static_cast<int>(g_matched.size()) - 1;
-  g_selected = std::clamp(g_selected + delta, 0, last);
+  // ↑ 在第一筆跳到最後一筆、↓ 在最後一筆跳回第一筆（詞彙多時不用一路按回去）。
+  // PgUp/PgDn 一次跳一頁，照舊停在兩端。
+  if (delta == -1 && g_selected <= 0) {
+    g_selected = last;
+  } else if (delta == 1 && g_selected >= last) {
+    g_selected = 0;
+  } else {
+    g_selected = std::clamp(g_selected + delta, 0, last);
+  }
   EnsureSelectionVisible();
   ::InvalidateRect(g_hwnd, nullptr, FALSE);
 }
