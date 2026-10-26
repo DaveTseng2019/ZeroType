@@ -22,6 +22,8 @@ class AppConstants {
   static const String localSttShowConsoleKey = 'local_stt_show_console';
 
   /// 本機辨識端點的啟動方式。留空＝ZeroType 只連線，不負責啟動。
+  /// 實際存的鍵是「這個值.模型 id」，每個本機模型各一份（見 LocalSttService）。
+  /// 不帶模型 id 的舊鍵只在升級時讀一次，搬完就刪。
   static const String localSttProgramKey = 'local_stt_program';
   static const String localSttArgumentsKey = 'local_stt_arguments';
 

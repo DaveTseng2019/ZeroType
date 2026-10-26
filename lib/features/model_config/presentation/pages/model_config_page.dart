@@ -7,7 +7,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:zero_type/core/constants/model_pricing.dart';
 import 'package:zero_type/core/di/injection.dart';
 import 'package:zero_type/core/constants/app_constants.dart';
-import 'package:zero_type/core/services/local_stt_service.dart' show LocalSttHealth;
+import 'package:zero_type/core/services/local_stt_service.dart'
+    show LocalSttHealth, LocalSttRestart, kLocalEngineModelIds;
 import '../controllers/model_config_controller.dart';
 import '../../entities/ai_provider.dart';
 
@@ -228,10 +229,12 @@ class _SpeechConfigSection extends ConsumerWidget {
               ),
             ] else ...[
               const SizedBox(height: 24),
-              // key 綁著模型 id：換服務商或換模型都會重建這個面板，
-              // 於是 initState 會重新探一次端點狀態。使用者剛點過模型時，
-              // 最想知道的就是「那個模型現在跑得起來嗎」。
-              _LocalProviderPanel(key: ValueKey('local-${state.modelId}')),
+              // notes: key 不綁模型 id。換模型要在 didUpdateWidget 裡重啟端點，
+              //        重建面板就分不出「剛打開頁面」和「剛換了模型」。
+              _LocalProviderPanel(
+                key: const ValueKey('local'),
+                selectedModelId: state.modelId,
+              ),
             ],
             if (state.providerId != 'azure') ...[
               const SizedBox(height: 24),
@@ -256,8 +259,20 @@ class _SpeechConfigSection extends ConsumerWidget {
 ///
 /// notes: 本機模型常駐約 1.8 GB VRAM。不用的時候要能收回來，所以停止鍵是必要的，
 ///        不是方便性功能。
+/// 套用啟動設定之後給使用者看的一句話。存設定與換模型共用。
+String _restartMessage(LocalSttRestart result, {required String what}) =>
+    switch (result) {
+      LocalSttRestart.notRunning => '$what，下次啟動端點時生效',
+      LocalSttRestart.restarted => '$what，正在重新啟動端點',
+      LocalSttRestart.notLaunchable => '$what，但找不到啟動程式，端點沒有重啟。請到「啟動設定（進階）」填路徑',
+      LocalSttRestart.stuck => '$what，但舊端點沒有結束，請按「停止」後再啟動',
+    };
+
 class _LocalProviderPanel extends StatefulWidget {
-  const _LocalProviderPanel({super.key});
+  const _LocalProviderPanel({super.key, required this.selectedModelId});
+
+  /// 模型選單選的那一個。換了就用那個模型的啟動設定重啟端點。
+  final String? selectedModelId;
 
   @override
   State<_LocalProviderPanel> createState() => _LocalProviderPanelState();
@@ -314,6 +329,32 @@ class _LocalProviderPanelState extends State<_LocalProviderPanel> {
     super.dispose();
   }
 
+  /// 選單換了模型：端點在跑、而且跑的不是新選的那個，就用新模型的設定重啟。
+  ///
+  /// notes: 端點沒回報引擎（舊版 shim、別的端點）時分不出跑的是誰，一律重啟。
+  @override
+  void didUpdateWidget(covariant _LocalProviderPanel oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final model = widget.selectedModelId;
+    if (model == null || model == oldWidget.selectedModelId) return;
+    if (_runningModelId == model) return;
+    // didUpdateWidget 在 build 階段裡，這時不能 setState；等這一格畫完再做。
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _switchModel(kModelNames[model] ?? model);
+    });
+  }
+
+  Future<void> _switchModel(String name) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final result = await _applyLaunchSettings();
+    // 端點沒在跑就不必說什麼：下次啟動自然用新模型。
+    if (result == LocalSttRestart.notRunning) return;
+    messenger.showSnackBar(SnackBar(
+      content: Text(_restartMessage(result, what: '已換成 $name')),
+      duration: const Duration(seconds: 3),
+    ));
+  }
+
   void _onLogExpanded(bool open) {
     setState(() => _logOpen = open);
     if (open) _refresh();
@@ -360,6 +401,28 @@ class _LocalProviderPanelState extends State<_LocalProviderPanel> {
     if (mounted) setState(() => _busy = false);
   }
 
+  /// 啟動設定存好之後：端點正在跑就用新設定重啟，讓設定立刻生效。
+  ///
+  /// notes: 重啟途中不設 _startDeadline。每兩秒的 _refresh 會在舊端點還活著時看到
+  ///        healthy，有 deadline 就會把轉圈圈收掉、按鈕放回來；等新端點拉起來才設。
+  Future<LocalSttRestart> _applyLaunchSettings() async {
+    setState(() {
+      _busy = true;
+      _startDeadline = null;
+    });
+    final result = await localSttService.restartIfRunning();
+    if (!mounted) return result;
+    setState(() {
+      if (result == LocalSttRestart.restarted) {
+        _startDeadline = DateTime.now().add(const Duration(seconds: 60));
+      } else {
+        _busy = false;
+      }
+    });
+    await _refresh();
+    return result;
+  }
+
   /// 「啟動於 11:37:03，載入 10.0 秒」。端點沒回報啟動時間（舊版 shim）就是 null。
   String? _startedText() {
     final at = _health?.startedAt;
@@ -371,6 +434,17 @@ class _LocalProviderPanelState extends State<_LocalProviderPanel> {
         '${two(at.hour)}:${two(at.minute)}:${two(at.second)}';
     final load = _health?.loadSeconds;
     return load == null ? '啟動於 $when' : '啟動於 $when，載入 ${load.toStringAsFixed(1)} 秒';
+  }
+
+  /// 端點實際跑的模型 id。端點沒回報引擎、或引擎沒有對應的選單項目，就是 null。
+  String? get _runningModelId => kLocalEngineModelIds[_health?.engine];
+
+  /// 「FireRedASR2-AED」。認不得的引擎直接顯示引擎名稱。
+  String? _runningModelName() {
+    final engine = _health?.engine;
+    if (engine == null) return null;
+    final id = _runningModelId;
+    return id == null ? engine : (kModelNames[id] ?? id);
   }
 
   @override
@@ -401,7 +475,10 @@ class _LocalProviderPanelState extends State<_LocalProviderPanel> {
               Text(
                 running == null
                     ? '本機端點：確認中…'
-                    : (running ? '本機端點：執行中' : '本機端點：未啟動'),
+                    : (running
+                        ? '本機端點：執行中'
+                            '${_runningModelName() == null ? '' : '（${_runningModelName()}）'}'
+                        : '本機端點：未啟動'),
                 style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
               ),
               const SizedBox(width: 8),
@@ -450,6 +527,22 @@ class _LocalProviderPanelState extends State<_LocalProviderPanel> {
               child: Text(
                 _startedText()!,
                 style: TextStyle(fontSize: 12, color: cs.onSurface.withAlpha(150)),
+              ),
+            ),
+          ],
+          // 換模型會自動重啟，平常不會不一致。會出現代表重啟沒成功（舊端點關不掉、
+          // 新模型找不到程式），或端點是外部啟動的。講出來，免得以為已經切過去了。
+          if (running == true &&
+              _runningModelId != null &&
+              widget.selectedModelId != null &&
+              _runningModelId != widget.selectedModelId) ...[
+            const SizedBox(height: 4),
+            Padding(
+              padding: const EdgeInsets.only(left: 26),
+              child: Text(
+                '端點跑的是 ${_runningModelName()}，跟上面選的模型不同。'
+                '按「停止」再按「啟動」就會換成上面選的模型。',
+                style: const TextStyle(fontSize: 13, color: Colors.orange, height: 1.5),
               ),
             ),
           ],
@@ -517,7 +610,11 @@ class _LocalProviderPanelState extends State<_LocalProviderPanel> {
             ],
           ),
           const Divider(height: 24),
-          const _LocalLaunchSettings(),
+          // key 綁模型 id：換模型時輸入框要換成那個模型自己的設定。
+          _LocalLaunchSettings(
+            key: ValueKey('launch-${widget.selectedModelId}'),
+            onSaved: _applyLaunchSettings,
+          ),
           const Divider(height: 24),
           // 展開方式跟上面的「啟動設定」一致：同一張卡片裡只用一種展開控制項。
           Theme(
@@ -1055,7 +1152,10 @@ class _LocalNotInstalledNotice extends StatelessWidget {
 /// notes: 端點位址不放在這裡。那一份在「進階設定 → 自建模型接口」，
 ///        辨識請求與 /health、/shutdown 共用同一個值，不要開第二個欄位。
 class _LocalLaunchSettings extends StatefulWidget {
-  const _LocalLaunchSettings();
+  const _LocalLaunchSettings({super.key, required this.onSaved});
+
+  /// 設定寫進 prefs 之後呼叫，回報端點那邊怎麼處理。
+  final Future<LocalSttRestart> Function() onSaved;
 
   @override
   State<_LocalLaunchSettings> createState() => _LocalLaunchSettingsState();
@@ -1071,10 +1171,8 @@ class _LocalLaunchSettingsState extends State<_LocalLaunchSettings> {
     super.initState();
     // 欄位放的是「使用者自己填過的值」，通常是空的。
     // 空欄位由 hintText 顯示自動偵測到的路徑，讓人知道不填也會動。
-    _program = TextEditingController(
-        text: appPrefs.getString(AppConstants.localSttProgramKey) ?? '');
-    _arguments = TextEditingController(
-        text: appPrefs.getString(AppConstants.localSttArgumentsKey) ?? '');
+    _program = TextEditingController(text: localSttService.customProgram);
+    _arguments = TextEditingController(text: localSttService.customArguments);
     _logPath = TextEditingController(
         text: appPrefs.getString(AppConstants.localSttLogPathKey) ?? '');
   }
@@ -1093,14 +1191,14 @@ class _LocalLaunchSettingsState extends State<_LocalLaunchSettings> {
       arguments: _arguments.text,
       logPath: _logPath.text,
     );
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('啟動設定已儲存，下次啟動端點時生效'),
-          duration: Duration(seconds: 2),
-        ),
-      );
-    }
+    final result = await widget.onSaved();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(_restartMessage(result, what: '啟動設定已儲存')),
+        duration: const Duration(seconds: 3),
+      ),
+    );
   }
 
   /// 空欄位顯示自動偵測的結果。這三個欄位平常不該有人去動。
@@ -1150,7 +1248,8 @@ class _LocalLaunchSettingsState extends State<_LocalLaunchSettings> {
         title: const Text('啟動設定（進階）',
             style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
         subtitle: Text(
-          '平常不用動。ZeroType 會自己找辨識程式；只有要換成別的本機模型才填這裡。',
+          '每個本機模型各有一份，這裡是「${kModelNames[localSttService.modelId] ?? localSttService.modelId}」的。'
+          '換模型用上面的選單；只有第一次設定路徑時才需要填這裡。',
           style: TextStyle(fontSize: 12, color: cs.onSurface.withAlpha(150)),
         ),
         tilePadding: EdgeInsets.zero,

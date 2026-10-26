@@ -25,7 +25,46 @@ final _defaultOrigin = Uri.parse(kLocalTranscriptionUrl).origin;
 ///        要藏就得由端點自己藏，見 _hideConsoleFlag。
 
 /// 端點 /health 的內容。startedAt／loadSeconds 舊版端點沒有，是 null。
-typedef LocalSttHealth = ({bool ok, DateTime? startedAt, double? loadSeconds});
+/// engine 是 LocalSTT 的 --engine（moss／firered）；別的端點沒有這欄，是 null。
+typedef LocalSttHealth = ({
+  bool ok,
+  DateTime? startedAt,
+  double? loadSeconds,
+  String? engine,
+});
+
+/// LocalSTT 的 --engine 對應到模型選單的哪一個 id（assets/config/providers.json）。
+const kLocalEngineModelIds = {
+  'moss': 'moss-transcribe-diarize',
+  'firered': 'fireredasr2-aed',
+};
+
+/// 本機服務商還沒選過模型時用哪一個。跟 providers.json 的第一個一致。
+const _defaultLocalModelId = 'moss-transcribe-diarize';
+
+/// 沒填啟動參數時，各模型的預設值（相對於自動找到的 LocalSTT 資料夾）。
+///
+/// notes: FireRed 還需要 --firered-dir，那是使用者自己 clone 的位置，猜不到。
+///        沒填就會在端點記錄裡看到 shim 報錯，使用者照著到進階設定補上。
+const _defaultArguments = {
+  'moss-transcribe-diarize': _shimName,
+  'fireredasr2-aed': '$_shimName --engine firered',
+};
+
+/// 存好啟動設定之後，端點那邊發生了什麼。
+enum LocalSttRestart {
+  /// 端點沒在跑，新設定等下次啟動時生效。
+  notRunning,
+
+  /// 新設定指的程式不存在，舊端點保留不動。
+  notLaunchable,
+
+  /// 舊端點已關，已用新設定啟動。
+  restarted,
+
+  /// 舊端點關不掉（例如別人啟動、又不接受 /shutdown），新設定沒有生效。
+  stuck,
+}
 
 /// 啟動參數的切法：認雙引號，其餘照空白切。
 final _argPattern = RegExp(r'"([^"]*)"|(\S+)');
@@ -34,7 +73,9 @@ final _argPattern = RegExp(r'"([^"]*)"|(\S+)');
 class LocalSttService {
   LocalSttService({required Dio dio, required SharedPreferences prefs})
       : _dio = dio,
-        _prefs = prefs;
+        _prefs = prefs {
+    _migrateLegacyLaunchSettings();
+  }
 
   final Dio _dio;
   final SharedPreferences _prefs;
@@ -72,6 +113,57 @@ class LocalSttService {
     return null;
   }
 
+  /// 本機模型選單目前選的那一個。啟動程式與參數是每個模型各存一份。
+  String get modelId =>
+      _prefs.getString('${AppConstants.selectedSpeechModelKey}_local') ??
+      _defaultLocalModelId;
+
+  /// 某個模型專屬的設定鍵，例如 local_stt_program.fireredasr2-aed。
+  static String _modelKey(String key, String modelId) => '$key.$modelId';
+
+  /// 舊版只有一份啟動設定。搬到它實際在跑的那個模型名下，再刪掉舊的鍵。
+  ///
+  /// notes: 從參數裡的 --engine 判斷是哪個模型，沒寫就是 LocalSTT 的預設 moss。
+  /// notes: 舊設定指向某個資料夾裡的 shim.py，而那個資料夾有 LocalSTT 自己的 venv 時，
+  ///        順手把它填成 MOSS 的設定。那個資料夾不在自動偵測的位置上（否則當初不必填），
+  ///        不填的話，換回 MOSS 會變成「找不到辨識程式」。
+  /// notes: setString 會先改記憶體裡的快取再寫檔，所以不必 await，
+  ///        建構完之後馬上讀得到搬好的值。
+  void _migrateLegacyLaunchSettings() {
+    final program = _prefs.getString(AppConstants.localSttProgramKey)?.trim() ?? '';
+    final arguments = _prefs.getString(AppConstants.localSttArgumentsKey)?.trim() ?? '';
+    if (program.isEmpty && arguments.isEmpty) return;
+
+    final engine = RegExp(r'--engine\s+(\S+)').firstMatch(arguments)?.group(1) ?? 'moss';
+    final target = kLocalEngineModelIds[engine] ?? _defaultLocalModelId;
+    void fill(String model, String key, String value) {
+      final k = _modelKey(key, model);
+      if (value.isNotEmpty && (_prefs.getString(k) ?? '').isEmpty) {
+        _prefs.setString(k, value);
+      }
+    }
+
+    fill(target, AppConstants.localSttProgramKey, program);
+    fill(target, AppConstants.localSttArgumentsKey, arguments);
+
+    final shim = _argPattern
+        .allMatches(arguments)
+        .map((m) => m.group(1) ?? m.group(2)!)
+        .firstWhere((a) => a.toLowerCase().endsWith(_shimName), orElse: () => '');
+    if (shim.isNotEmpty && target != _defaultLocalModelId) {
+      final root = File(shim).parent.path;
+      final mossPython = '$root\\$_pythonRelative';
+      if (File(mossPython).existsSync()) {
+        fill(_defaultLocalModelId, AppConstants.localSttProgramKey, mossPython);
+        fill(_defaultLocalModelId, AppConstants.localSttArgumentsKey, shim);
+      }
+    }
+
+    _prefs.remove(AppConstants.localSttProgramKey);
+    _prefs.remove(AppConstants.localSttArgumentsKey);
+    print('[LocalSTT] 舊版啟動設定已搬到 $target');
+  }
+
   /// 設定值優先；沒填就從自動找到的資料夾推。兩個都沒有就是空字串。
   String _resolved(String key, String relative) {
     final custom = _prefs.getString(key)?.trim();
@@ -98,7 +190,8 @@ class LocalSttService {
   String get shutdownUrl => '$_origin/shutdown';
 
   /// 目前生效的啟動設定。空字串＝找不到，也沒有人填——這時候不啟動。
-  String get program => _resolved(AppConstants.localSttProgramKey, _pythonRelative);
+  String get program => _resolved(
+      _modelKey(AppConstants.localSttProgramKey, modelId), _pythonRelative);
 
   /// ZeroType 有沒有辦法自己把端點啟動起來。
   ///
@@ -107,16 +200,30 @@ class LocalSttService {
   ///        不存在的檔案。只看 isNotEmpty 會給出一顆按了必定失敗的啟動鍵。
   ///        只驗直譯器本身：啟動參數可能是多個、帶引號，記錄檔則是啟動後才產生的。
   bool get canLaunch => program.isNotEmpty && File(program).existsSync();
-  String get arguments => _resolved(AppConstants.localSttArgumentsKey, _shimName);
+  String get arguments => _resolved(
+      _modelKey(AppConstants.localSttArgumentsKey, modelId),
+      _defaultArguments[modelId] ?? _shimName);
+
+  /// 記錄檔各模型共用：不管跑哪個引擎，設定頁看的都是同一個端點的訊息。
   String get logPath => _resolved(AppConstants.localSttLogPathKey, _logName);
 
+  /// 目前選的模型「自己填過」的值，給設定頁的輸入框用。沒填過是空字串。
+  String get customProgram =>
+      _prefs.getString(_modelKey(AppConstants.localSttProgramKey, modelId)) ?? '';
+  String get customArguments =>
+      _prefs.getString(_modelKey(AppConstants.localSttArgumentsKey, modelId)) ?? '';
+
+  /// 存成目前選的那個模型的設定。
   Future<void> saveLaunchSettings({
     required String program,
     required String arguments,
     required String logPath,
   }) async {
-    await _prefs.setString(AppConstants.localSttProgramKey, program.trim());
-    await _prefs.setString(AppConstants.localSttArgumentsKey, arguments.trim());
+    final model = modelId;
+    await _prefs.setString(
+        _modelKey(AppConstants.localSttProgramKey, model), program.trim());
+    await _prefs.setString(
+        _modelKey(AppConstants.localSttArgumentsKey, model), arguments.trim());
     await _prefs.setString(AppConstants.localSttLogPathKey, logPath.trim());
   }
 
@@ -282,6 +389,27 @@ class LocalSttService {
     }
   }
 
+  /// 讓剛存好的啟動設定立刻生效：端點正在跑就關掉，再用新設定啟動。
+  ///
+  /// notes: 「正在跑」看 /health 有沒有回應，不看 ok。模型還在載入時 ok 是 false，
+  ///        但行程已經佔著 port 與 GPU 記憶體，一樣要先關掉。
+  /// notes: 新設定指的程式不存在就不關舊的。關了也啟動不起來，使用者只會兩頭落空。
+  Future<LocalSttRestart> restartIfRunning() async {
+    if (await health() == null) return LocalSttRestart.notRunning;
+    if (!canLaunch) return LocalSttRestart.notLaunchable;
+    await shutdown();
+    // notes: 等 /health 連不上才啟動。舊行程還佔著 port 時，ensureRunning 會把它當成
+    //        「已在執行」而沿用，新設定就又沒生效。最多等 5 秒。
+    for (var i = 0; i < 25 && await health() != null; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+    }
+    if (await health() != null) return LocalSttRestart.stuck;
+    // 舊的已經關了，不必再擋「上一次啟動仍在載入中」。
+    _startedAt = null;
+    await ensureRunning();
+    return LocalSttRestart.restarted;
+  }
+
   /// 讀端點記錄的最後幾行，給設定頁顯示。
   ///
   /// notes: 讀檔而不是接管道。管道只讀得到自己啟動的那個行程，而且不讀就會塞死
@@ -324,12 +452,14 @@ class LocalSttService {
       if (data is! Map) return null;
       final started = data['started_at'];
       final load = data['load_seconds'];
+      final engine = data['engine'];
       return (
         ok: data['ok'] == true,
         startedAt: started is num
             ? DateTime.fromMillisecondsSinceEpoch((started * 1000).round())
             : null,
         loadSeconds: load is num ? load.toDouble() : null,
+        engine: engine is String && engine.isNotEmpty ? engine : null,
       );
     } catch (_) {
       return null;
