@@ -131,10 +131,6 @@
         {
           "id": "moss-transcribe-diarize",
           "name": "MOSS Transcribe Diarize 0.9B"
-        },
-        {
-          "id": "fireredasr2-aed",
-          "name": "FireRedASR2-AED"
         }
       ]
     }

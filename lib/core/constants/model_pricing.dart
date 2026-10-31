@@ -59,7 +59,6 @@ const Map<String, String> kModelNames = {
   'moss-transcribe-diarize': 'MOSS Transcribe Diarize',
   // notes: 本機模型各有一份啟動設定（LocalSttService），選單換模型就換那份設定並重啟端點。
   //        實際跑哪個引擎仍由那份設定裡的 --engine 決定，id 對照見 kLocalEngineModelIds。
-  'fireredasr2-aed': 'FireRedASR2-AED',
   'gemini-2.5-flash': 'Gemini 2.5 Flash',
   'gemini-3-flash-preview': 'Gemini 3 Flash Preview',
   'google/gemini-2.5-flash': 'Gemini 2.5 Flash',
@@ -81,6 +80,7 @@ const Map<String, String> kModelNames = {
 /// 紀錄頁每句前面標的模型簡稱，只要認得出是哪個模型就好。沒列的退回 [kModelNames]。
 const Map<String, String> kModelShortNames = {
   'moss-transcribe-diarize': 'MOSS',
+  // 已移除的本機引擎。留著讓舊紀錄的標籤仍看得懂。
   'fireredasr2-aed': 'FireRed',
   'gpt-transcribe': 'GPT',
   'gpt-4o-transcribe': '4o',

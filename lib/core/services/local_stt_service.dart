@@ -25,7 +25,7 @@ final _defaultOrigin = Uri.parse(kLocalTranscriptionUrl).origin;
 ///        要藏就得由端點自己藏，見 _hideConsoleFlag。
 
 /// 端點 /health 的內容。startedAt／loadSeconds 舊版端點沒有，是 null。
-/// engine 是 LocalSTT 的 --engine（moss／firered）；別的端點沒有這欄，是 null。
+/// engine 是 LocalSTT 的 --engine（目前只有 moss）；別的端點沒有這欄，是 null。
 typedef LocalSttHealth = ({
   bool ok,
   DateTime? startedAt,
@@ -36,19 +36,14 @@ typedef LocalSttHealth = ({
 /// LocalSTT 的 --engine 對應到模型選單的哪一個 id（assets/config/providers.json）。
 const kLocalEngineModelIds = {
   'moss': 'moss-transcribe-diarize',
-  'firered': 'fireredasr2-aed',
 };
 
 /// 本機服務商還沒選過模型時用哪一個。跟 providers.json 的第一個一致。
 const _defaultLocalModelId = 'moss-transcribe-diarize';
 
 /// 沒填啟動參數時，各模型的預設值（相對於自動找到的 LocalSTT 資料夾）。
-///
-/// notes: FireRed 還需要 --firered-dir，那是使用者自己 clone 的位置，猜不到。
-///        沒填就會在端點記錄裡看到 shim 報錯，使用者照著到進階設定補上。
 const _defaultArguments = {
   'moss-transcribe-diarize': _shimName,
-  'fireredasr2-aed': '$_shimName --engine firered',
 };
 
 /// 存好啟動設定之後，端點那邊發生了什麼。
@@ -74,7 +69,20 @@ class LocalSttService {
   LocalSttService({required Dio dio, required SharedPreferences prefs})
       : _dio = dio,
         _prefs = prefs {
+    _dropRemovedLocalModel();
     _migrateLegacyLaunchSettings();
+  }
+
+  /// 選單裡已經沒有的本機模型（例如移除的 FireRed），改回預設模型。
+  ///
+  /// notes: 只清「選了哪個模型」這個鍵；該模型的啟動設定留著不刪，無害，
+  ///        也免得哪天加回來時使用者要重填。
+  void _dropRemovedLocalModel() {
+    final key = '${AppConstants.selectedSpeechModelKey}_local';
+    final selected = _prefs.getString(key);
+    if (selected != null && !kLocalEngineModelIds.containsValue(selected)) {
+      _prefs.remove(key);
+    }
   }
 
   final Dio _dio;
@@ -118,7 +126,7 @@ class LocalSttService {
       _prefs.getString('${AppConstants.selectedSpeechModelKey}_local') ??
       _defaultLocalModelId;
 
-  /// 某個模型專屬的設定鍵，例如 local_stt_program.fireredasr2-aed。
+  /// 某個模型專屬的設定鍵，例如 local_stt_program.moss-transcribe-diarize。
   static String _modelKey(String key, String modelId) => '$key.$modelId';
 
   /// 舊版只有一份啟動設定。搬到它實際在跑的那個模型名下，再刪掉舊的鍵。
@@ -135,7 +143,8 @@ class LocalSttService {
     if (program.isEmpty && arguments.isEmpty) return;
 
     final engine = RegExp(r'--engine\s+(\S+)').firstMatch(arguments)?.group(1) ?? 'moss';
-    final target = kLocalEngineModelIds[engine] ?? _defaultLocalModelId;
+    // null＝已移除的引擎（例如 firered）。它的設定不搬，免得填進 MOSS 名下。
+    final target = kLocalEngineModelIds[engine];
     void fill(String model, String key, String value) {
       final k = _modelKey(key, model);
       if (value.isNotEmpty && (_prefs.getString(k) ?? '').isEmpty) {
@@ -143,8 +152,10 @@ class LocalSttService {
       }
     }
 
-    fill(target, AppConstants.localSttProgramKey, program);
-    fill(target, AppConstants.localSttArgumentsKey, arguments);
+    if (target != null) {
+      fill(target, AppConstants.localSttProgramKey, program);
+      fill(target, AppConstants.localSttArgumentsKey, arguments);
+    }
 
     final shim = _argPattern
         .allMatches(arguments)
@@ -161,7 +172,7 @@ class LocalSttService {
 
     _prefs.remove(AppConstants.localSttProgramKey);
     _prefs.remove(AppConstants.localSttArgumentsKey);
-    print('[LocalSTT] 舊版啟動設定已搬到 $target');
+    print('[LocalSTT] 舊版啟動設定已搬到 ${target ?? _defaultLocalModelId}');
   }
 
   /// 設定值優先；沒填就從自動找到的資料夾推。兩個都沒有就是空字串。

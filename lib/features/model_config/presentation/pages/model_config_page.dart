@@ -439,7 +439,7 @@ class _LocalProviderPanelState extends State<_LocalProviderPanel> {
   /// 端點實際跑的模型 id。端點沒回報引擎、或引擎沒有對應的選單項目，就是 null。
   String? get _runningModelId => kLocalEngineModelIds[_health?.engine];
 
-  /// 「FireRedASR2-AED」。認不得的引擎直接顯示引擎名稱。
+  /// 「MOSS Transcribe Diarize」。認不得的引擎直接顯示引擎名稱。
   String? _runningModelName() {
     final engine = _health?.engine;
     if (engine == null) return null;
