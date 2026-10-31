@@ -506,17 +506,12 @@ class SoundService {
   /// Windows 會把分軌音量記在登錄檔裡跨次啟動留著，一次誤觸就永遠聽不到。
   /// 要真正靜音請關掉設定頁的音效開關。
   ///
-  /// null 代表取不到（沒有輸出裝置、COM 失敗），那就照舊播，不擋流程。
-  static ISimpleAudioVolume? _sessionVolume;
-  static bool _sessionVolumeTried = false;
-
-  /// 把自身分軌拉回滿格並解除靜音。取不到介面就什麼都不做。
+  /// 把自身分軌拉回滿格並解除靜音。取不到介面（沒有輸出裝置、COM 失敗）就什麼都不做，
+  /// 照舊播，不擋流程。
+  ///
+  /// 不快取：分軌是跟著播放裝置走的，換了輸出裝置，舊的介面調的是舊裝置上那一軌。
   static void _ensureAudible() {
-    if (!_sessionVolumeTried) {
-      _sessionVolumeTried = true;
-      _sessionVolume = _openSessionVolume();
-    }
-    final volume = _sessionVolume;
+    final volume = _openSessionVolume();
     if (volume == null) return;
     volume.setMute(FALSE, nullptr);
     volume.setMasterVolume(1.0, nullptr);
