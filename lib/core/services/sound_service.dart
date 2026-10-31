@@ -152,6 +152,68 @@ const String kDefaultPhrasePickerSound = '/System/Library/Sounds/Pop.aiff';
 /// 就聽不見提示音。0 = 不干預系統音量。
 const int kDefaultMinMasterVolumePercent = 20;
 
+/// 某個播放裝置的主音量下限存在哪個設定鍵。耳機與喇叭的聽閾不同，所以每個裝置各存一份。
+/// deviceId 空白（取不到裝置）就用不分裝置的那個鍵。
+String minMasterVolumeKeyFor(String? deviceId) =>
+    deviceId == null || deviceId.isEmpty
+        ? AppConstants.minMasterVolumeKey
+        : '${AppConstants.minMasterVolumeKey}.$deviceId';
+
+/// 某個播放裝置的主音量下限（百分比）。
+///
+/// notes: 沒設定過的裝置沿用不分裝置的舊值，再沒有才用預設。
+///        舊版只有一個值，升級後每個裝置一開始都是那個值，各自調過才分開。
+int minMasterVolumePercentFor(SharedPreferences prefs, String? deviceId) =>
+    (deviceId == null || deviceId.isEmpty
+        ? null
+        : prefs.getInt(minMasterVolumeKeyFor(deviceId))) ??
+    prefs.getInt(AppConstants.minMasterVolumeKey) ??
+    kDefaultMinMasterVolumePercent;
+
+/// 目前預設播放裝置的 endpoint id 與名稱（例如「耳機 (WH-1000XM4)」）。
+/// 非 Windows、沒有播放裝置或 COM 失敗回 null；取不到名稱時名稱是空字串。
+({String id, String name})? defaultRenderDeviceInfo() {
+  if (!Platform.isWindows) return null;
+  final device = SoundService._defaultRenderDevice();
+  if (device == null) return null;
+  final ppId = calloc<Pointer<Utf16>>();
+  try {
+    if (FAILED(device.getId(ppId))) return null;
+    final id = ppId.value.toDartString();
+    CoTaskMemFree(ppId.value.cast()); // 字串是 COM 配的，這個要自己還
+    return (id: id, name: _deviceFriendlyName(device));
+  } catch (e) {
+    print('[SoundService] render device info failed: $e');
+    return null;
+  } finally {
+    calloc.free(ppId);
+  }
+}
+
+/// PKEY_Device_FriendlyName。取不到回空字串，不擋流程。
+String _deviceFriendlyName(IMMDevice device) {
+  const vtLpwstr = 31;
+  final ppStore = calloc<COMObject>();
+  if (FAILED(device.openPropertyStore(STGM_READ, ppStore.cast()))) {
+    calloc.free(ppStore); // 沒包成 IPropertyStore，沒有 Finalizer 會來收
+    return '';
+  }
+  final store = IPropertyStore(ppStore);
+  final key = calloc<PROPERTYKEY>();
+  final pv = calloc<PROPVARIANT>();
+  try {
+    key.ref.fmtid.setGUID('{a45c254e-df1c-4efd-8020-67d146a850e0}');
+    key.ref.pid = 14;
+    if (FAILED(store.getValue(key, pv))) return '';
+    final name = pv.ref.vt == vtLpwstr ? pv.ref.pwszVal.toDartString() : '';
+    PropVariantClear(pv);
+    return name;
+  } finally {
+    calloc.free(key);
+    calloc.free(pv);
+  }
+}
+
 /// Windows 內建語音提示音（對應 macOS 預設音效）
 ///
 /// 「錄音結束」配 Speech Off、「辨識完成」配 Notify —— 麥克風開關用同一組
@@ -278,11 +340,10 @@ class SoundService {
   bool get phrasePickerSoundEnabled =>
       _prefs.getBool(AppConstants.phrasePickerSoundEnabledKey) ?? true;
 
-  /// 提示音期間主音量的下限（0~1）；0 = 不干預系統音量。見 [_boostMaster]。
+  /// 目前預設播放裝置的主音量下限（0~1）；0 = 不干預系統音量。見 [_boostMaster]。
+  /// 每次播放都重抓裝置：使用者隨時會插拔耳機或切換輸出。
   double get minMasterVolume =>
-      (_prefs.getInt(AppConstants.minMasterVolumeKey) ??
-              kDefaultMinMasterVolumePercent) /
-          100;
+      minMasterVolumePercentFor(_prefs, defaultRenderDeviceInfo()?.id) / 100;
 
   Future<void> playStartSound() async {
     if (!soundEnabled) return;
@@ -521,6 +582,9 @@ class SoundService {
 
   /// 被我們頂高之前的主音量；null 代表現在沒有在頂。
   static double? _savedMaster;
+
+  /// 被頂高的是哪個裝置。還原要還到同一個裝置上，即使中途換了預設輸出。
+  static _EndpointVolume? _boostedEndpoint;
   static Timer? _restoreTimer;
 
   /// 主音量小於 [minMaster] 就在 [playback] 這段期間頂到 [minMaster]，之後還原。
@@ -532,7 +596,8 @@ class SoundService {
   /// notes: 主音量被靜音時不解除靜音。分軌靜音多半是誤觸，整台靜音是刻意的。
   static void _boostMaster(double minMaster, Duration playback) {
     if (minMaster <= 0) return;
-    final endpoint = _endpointVolume();
+    // 正在頂的期間沿用同一個裝置，免得連續播放時換到另一個裝置、原本那個沒還原
+    final endpoint = _boostedEndpoint ?? _endpointVolume();
     if (endpoint == null) return;
     final level = calloc<Float>();
     try {
@@ -540,6 +605,7 @@ class SoundService {
         if (FAILED(endpoint.getMasterVolumeLevelScalar(level))) return;
         if (level.value >= minMaster) return;
         _savedMaster = level.value;
+        _boostedEndpoint = endpoint;
       }
     } finally {
       calloc.free(level);
@@ -556,17 +622,15 @@ class SoundService {
   static void _restoreMaster() {
     _restoreTimer = null;
     final saved = _savedMaster;
+    final endpoint = _boostedEndpoint;
     _savedMaster = null;
+    _boostedEndpoint = null;
     if (saved == null) return;
-    _endpointVolume()?.setMasterVolumeLevelScalar(saved, nullptr);
+    endpoint?.setMasterVolumeLevelScalar(saved, nullptr);
   }
 
-  static _EndpointVolume? _endpoint;
-  static bool _endpointTried = false;
-
+  /// 目前預設播放裝置的主音量介面。不快取：換了輸出裝置，下一次提示音就要作用在新裝置上。
   static _EndpointVolume? _endpointVolume() {
-    if (_endpointTried) return _endpoint;
-    _endpointTried = true;
     final ppDevice = _defaultRenderDevice();
     if (ppDevice == null) return null;
     final ppVolume = calloc<COMObject>();
@@ -577,7 +641,7 @@ class SoundService {
       calloc.free(ppVolume);
       return null;
     }
-    return _endpoint = _EndpointVolume(ppVolume);
+    return _EndpointVolume(ppVolume);
   }
 
   static void _playWindows(String path) {

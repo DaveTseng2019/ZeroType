@@ -44,6 +44,7 @@ class SettingsController extends AsyncNotifier<SettingsState> {
       final maxRecordingMinutes = prefs.getInt(AppConstants.maxRecordingMinutesKey) ?? 1;
       final inputDeviceId = prefs.getString(AppConstants.inputDeviceIdKey) ?? '';
       final devices = await _loadDevices();
+      final output = defaultRenderDeviceInfo();
       // 0 = 不過濾，也是預設值
       final noiseGateStrength =
           prefs.getDouble(AppConstants.noiseGateStrengthKey) ?? 0;
@@ -75,8 +76,9 @@ class SettingsController extends AsyncNotifier<SettingsState> {
         phrasePickerSoundEnabled:
             prefs.getBool(AppConstants.phrasePickerSoundEnabledKey) ?? true,
         minMasterVolumePercent:
-            prefs.getInt(AppConstants.minMasterVolumeKey) ??
-                kDefaultMinMasterVolumePercent,
+            minMasterVolumePercentFor(prefs, output?.id),
+        outputDeviceId: output?.id ?? '',
+        outputDeviceName: output?.name ?? '',
         historyRetentionDays: historyRetentionDays,
         maxRecordingMinutes: maxRecordingMinutes,
         inputDeviceId: inputDeviceId,
@@ -342,9 +344,11 @@ class SettingsController extends AsyncNotifier<SettingsState> {
     }
   }
 
+  /// 只改目前預設播放裝置的那一份。
   Future<void> setMinMasterVolumePercent(int percent) async {
-    await appPrefs.setInt(AppConstants.minMasterVolumeKey, percent);
     final currentState = state.value;
+    await appPrefs.setInt(
+        minMasterVolumeKeyFor(currentState?.outputDeviceId), percent);
     if (currentState != null) {
       state = AsyncData(
           currentState.copyWith(minMasterVolumePercent: percent));
@@ -393,6 +397,8 @@ class SettingsController extends AsyncNotifier<SettingsState> {
     final isMicrophone = await AudioRecorder().hasPermission();
     // 藍牙裝置可能在 app 執行期間才連上，每次開設定頁重抓
     final devices = await _loadDevices();
+    // 播放裝置也一樣：換了耳機，滑桿要顯示新裝置的下限
+    final output = defaultRenderDeviceInfo();
 
     final currentState = state.value;
     if (currentState != null) {
@@ -402,6 +408,10 @@ class SettingsController extends AsyncNotifier<SettingsState> {
         inputDevices: devices.list,
         defaultDeviceLabel: devices.defaultLabel,
         defaultCommsDeviceLabel: devices.commsLabel,
+        outputDeviceId: output?.id ?? '',
+        outputDeviceName: output?.name ?? '',
+        minMasterVolumePercent:
+            minMasterVolumePercentFor(appPrefs, output?.id),
       ));
     } else {
       // State is still loading (initial build not done yet);

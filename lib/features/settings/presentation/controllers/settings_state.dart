@@ -28,6 +28,8 @@ class SettingsState {
     this.phrasePickerSound = kDefaultPhrasePickerSound,
     this.phrasePickerSoundEnabled = true,
     this.minMasterVolumePercent = kDefaultMinMasterVolumePercent,
+    this.outputDeviceId = '',
+    this.outputDeviceName = '',
     this.historyRetentionDays = 7,
     this.maxRecordingMinutes = 1,
     this.inputDeviceId = '',
@@ -76,8 +78,12 @@ class SettingsState {
   /// 常用詞彙浮窗要不要出聲（獨立於音效總開關之外）
   final bool phrasePickerSoundEnabled;
 
-  /// 提示音期間主音量的下限（百分比）；0 = 不干預系統音量
+  /// [outputDeviceId] 這個播放裝置的主音量下限（百分比）；0 = 不干預系統音量
   final int minMasterVolumePercent;
+
+  /// 目前的預設播放裝置。空字串 = 取不到，下限存在不分裝置的鍵。
+  final String outputDeviceId;
+  final String outputDeviceName;
   final int historyRetentionDays;
   final int maxRecordingMinutes;
 
@@ -119,6 +125,8 @@ class SettingsState {
     String? phrasePickerSound,
     bool? phrasePickerSoundEnabled,
     int? minMasterVolumePercent,
+    String? outputDeviceId,
+    String? outputDeviceName,
     int? historyRetentionDays,
     int? maxRecordingMinutes,
     String? inputDeviceId,
@@ -153,6 +161,8 @@ class SettingsState {
           phrasePickerSoundEnabled ?? this.phrasePickerSoundEnabled,
       minMasterVolumePercent:
           minMasterVolumePercent ?? this.minMasterVolumePercent,
+      outputDeviceId: outputDeviceId ?? this.outputDeviceId,
+      outputDeviceName: outputDeviceName ?? this.outputDeviceName,
       historyRetentionDays: historyRetentionDays ?? this.historyRetentionDays,
       maxRecordingMinutes: maxRecordingMinutes ?? this.maxRecordingMinutes,
       inputDeviceId: inputDeviceId ?? this.inputDeviceId,

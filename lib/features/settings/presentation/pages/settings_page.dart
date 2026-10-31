@@ -528,7 +528,10 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                       data: (data) => _SettingTile(
                         icon: Icons.volume_up,
                         title: '提示音最小系統音量',
-                        subtitle: '主動提升提示音量，之後會還原，避免聽不到提示音',
+                        subtitle: data.outputDeviceName.isEmpty
+                            ? '主動提升提示音量，之後會還原，避免聽不到提示音'
+                            : '每個播放裝置各存一個值，這裡是「${data.outputDeviceName}」的。'
+                                '提示音期間主動提升，之後會還原',
                         trailing: SizedBox(
                           width: 200,
                           child: Row(
@@ -568,7 +571,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> with WidgetsBinding
                     _SettingTile(
                       icon: Icons.settings_backup_restore,
                       title: '恢復預設音效',
-                      subtitle: '五個音效、開關與最小系統音量都回到初始設定',
+                      subtitle: '五個音效、開關與目前播放裝置的最小系統音量都回到初始設定',
                       trailing: OutlinedButton(
                         onPressed: () {
                           final notifier =
