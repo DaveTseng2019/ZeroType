@@ -638,6 +638,19 @@ bool CaretRectOnScreen(RECT* caret) {
   if (!::IsWindow(anchor)) return false;
   RECT wr = {};
   if (!::GetWindowRect(anchor, &wr)) return false;
+  // notes: 控制項大過半個螢幕（Herdr/Zed、Chrome、VS Code 整個視窗就是一個控制項，
+  // 實測 Herdr 的 hwndFocus 就是頂層視窗、rcCaret 全 0），左上角不是使用者打字的
+  // 地方，貼過去會卡在螢幕角落。回 false 改用置中偏上。要更準得走 UI Automation
+  // 的 TextPattern 取插入點。
+  MONITORINFO mi = {};
+  mi.cbSize = sizeof(mi);
+  if (::GetMonitorInfoW(::MonitorFromWindow(anchor, MONITOR_DEFAULTTONEAREST), &mi)) {
+    const int mw = mi.rcWork.right - mi.rcWork.left;
+    const int mh = mi.rcWork.bottom - mi.rcWork.top;
+    if ((wr.right - wr.left) * 2 > mw && (wr.bottom - wr.top) * 2 > mh) {
+      return false;
+    }
+  }
   // 控制項可能整片都是編輯區，取左上角當錨點就好
   *caret = {wr.left, wr.top, wr.left, wr.top};
   return true;
