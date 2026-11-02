@@ -27,6 +27,8 @@ constexpr int kHintFontSize = 12;
 constexpr int kRadius = 12;
 constexpr int kMarkerWidth = 3;
 constexpr int kCaretGap = 6;
+// 找不到插入點時，浮窗離工作區左緣的距離。Herdr 的輸入列約從這裡開始。
+constexpr int kFallbackLeft = 120;
 
 const COLORREF kBackground = RGB(0x1C, 0x1C, 0x1E);
 const COLORREF kForeground = RGB(0xF5, 0xF5, 0xF7);
@@ -613,7 +615,7 @@ void ForceForeground(HWND hwnd) {
 //
 // notes: 只有用系統插入點的程式問得到（EmEditor、記事本、Office）。Chrome、
 // VS Code 這類自己畫游標的拿不到 rcCaret，退而用有焦點的那個控制項的左上角；
-// 兩個都沒有就回 false，由呼叫端改用螢幕上三分之一的老位置。
+// 兩個都沒有就回 false，由呼叫端改用離螢幕左緣 kFallbackLeft、上下 1/3 的位置。
 bool CaretRectOnScreen(RECT* caret) {
   HWND fg = ::GetForegroundWindow();
   if (!fg) return false;
@@ -640,7 +642,7 @@ bool CaretRectOnScreen(RECT* caret) {
   if (!::GetWindowRect(anchor, &wr)) return false;
   // notes: 控制項大過半個螢幕（Herdr/Zed、Chrome、VS Code 整個視窗就是一個控制項，
   // 實測 Herdr 的 hwndFocus 就是頂層視窗、rcCaret 全 0），左上角不是使用者打字的
-  // 地方，貼過去會卡在螢幕角落。回 false 改用置中偏上。要更準得走 UI Automation
+  // 地方，貼過去會卡在螢幕角落。回 false 改用偏左上（貼近左緣、上下 1/3）。要更準得走 UI Automation
   // 的 TextPattern 取插入點。
   MONITORINFO mi = {};
   mi.cbSize = sizeof(mi);
@@ -729,7 +731,8 @@ std::string PickerShow(const std::vector<std::string>& items) {
     y = caret.bottom + gap;
     if (y + h > work.bottom) y = caret.top - gap - h;
   } else {
-    x = work.left + (work.right - work.left - w) / 2;
+    // 找不到插入點：貼近左緣（離工作區左邊 kFallbackLeft），上下 1/3
+    x = work.left + Scale(kFallbackLeft);
     y = work.top + (work.bottom - work.top - h) / 3;
   }
   x = std::clamp(x, static_cast<int>(work.left),
@@ -754,7 +757,7 @@ std::string PickerShow(const std::vector<std::string>& items) {
   MoveCompositionWindow();
   ::InvalidateRect(g_hwnd, nullptr, FALSE);
 
-  return Describe(has_caret ? "常用詞彙：對齊插入點" : "常用詞彙：找不到插入點，置中");
+  return Describe(has_caret ? "常用詞彙：對齊插入點" : "常用詞彙：找不到插入點，偏左上");
 }
 
 void PickerHide() {
