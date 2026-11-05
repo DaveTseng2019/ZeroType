@@ -13,6 +13,7 @@ import 'package:zero_type/features/settings/presentation/controllers/settings_co
 import 'package:zero_type/features/history/presentation/pages/history_page.dart';
 import 'package:zero_type/features/log/log_page.dart';
 import 'package:zero_type/features/model_config/presentation/pages/model_config_page.dart';
+import 'package:zero_type/features/perf/perf_page.dart';
 import 'package:zero_type/features/phrases/phrase_page.dart';
 import 'package:zero_type/features/prompt/presentation/pages/prompt_page.dart';
 import 'package:zero_type/features/settings/presentation/pages/settings_page.dart';
@@ -236,6 +237,11 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
                       selectedIcon: Icon(Icons.receipt_long),
                       label: Text('紀錄'),
                     ),
+                    NavigationRailDestination(
+                      icon: Icon(Icons.speed_outlined),
+                      selectedIcon: Icon(Icons.speed),
+                      label: Text('效能'),
+                    ),
                   ],
                 ),
                 const VerticalDivider(thickness: 1, width: 1),
@@ -252,6 +258,7 @@ class _MainShellPageState extends ConsumerState<MainShellPage> {
                       PhrasePage(),
                       HistoryPage(),
                       LogPage(),
+                      PerfPage(),
                     ],
                   ),
                 ),

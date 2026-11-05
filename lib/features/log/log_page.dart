@@ -45,7 +45,7 @@ class LogPage extends ConsumerWidget {
               const Spacer(),
               Tooltip(
                 message: '紀錄一併寫到 debug.log，並多記貼上目標等細節。'
-                    '平常關著，追問題時才開。清空紀錄或清除歷史時一併刪掉',
+                    '平常關著，追問題時才開。清空紀錄或清除歷史時一併刪掉（效能分頁也一起清）',
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [

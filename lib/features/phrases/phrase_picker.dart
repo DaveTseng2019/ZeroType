@@ -105,7 +105,8 @@ class PhrasePicker {
     final outcome = await pasteText(text);
     _log.debug('貼上：${outcome.target}');
     if (outcome.pasted) {
-      _log.info(text);
+      // 貼上的內容平常不記（常用詞彙頁就看得到）；偵錯模式才記，跟貼上目標對照
+      _log.debug(text);
     } else {
       _log.error('沒貼上（焦點切不回原本的視窗，或按熱鍵時焦點在 ZeroType 自己'
           '身上）；文字已複製到剪貼簿');

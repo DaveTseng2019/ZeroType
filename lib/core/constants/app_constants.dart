@@ -63,6 +63,10 @@ class AppConstants {
   /// 偵錯模式：紀錄一併寫到 [debugLogFileName]，並多記貼上目標之類的細節
   static const String debugLogKey = 'debug_log';
   static const String debugLogFileName = 'debug.log';
+
+  /// 效能紀錄：開著時每句辨識寫一筆到 [perfLogFileName]，效能分頁讀它顯示
+  static const String perfLogKey = 'perf_log';
+  static const String perfLogFileName = 'perf.jsonl';
   static const String fontSizesKey = 'font_sizes_json';
 
   static const String githubRepoUrl = 'https://github.com/DaveTseng2019/ZeroType';

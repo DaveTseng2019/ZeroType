@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:zero_type/core/constants/app_constants.dart';
 import 'package:zero_type/core/di/injection.dart';
+import 'package:zero_type/features/perf/perf_controller.dart';
 
 enum LogLevel { info, error }
 
@@ -82,9 +83,10 @@ class LogController extends Notifier<List<LogEntry>> {
   }
 
   /// 清空紀錄，連落地的檔案一起刪 —— 清歷史紀錄時會走這裡，
-  /// 講過的話不該只清掉畫面上那份而留在磁碟上。
+  /// 講過的話不該只清掉畫面上那份而留在磁碟上。效能分頁跟著一起清。
   void clear() {
     state = const [];
+    ref.read(perfControllerProvider.notifier).clear();
     _tail = _tail.then((_) async {
       final file = await _logFile();
       if (file.existsSync()) await file.delete();

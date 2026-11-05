@@ -13,6 +13,7 @@ import 'package:zero_type/core/state/zero_type_state.dart';
 import 'package:zero_type/features/history/entities/transcription_record.dart';
 import 'package:zero_type/features/history/presentation/controllers/history_controller.dart';
 import 'package:zero_type/features/log/log_controller.dart';
+import 'package:zero_type/features/perf/perf_controller.dart';
 import 'package:zero_type/features/model_config/presentation/controllers/model_config_controller.dart';
 import 'package:zero_type/features/prompt/presentation/controllers/prompt_controller.dart';
 import 'package:zero_type/features/dictionary/presentation/controllers/dictionary_controller.dart';
@@ -490,7 +491,9 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       await _showNativeOverlay('transcribing', '辨識中');
 
       final config = await ref.read(speechProviderControllerProvider.future);
+      final transcribeWatch = Stopwatch()..start();
       final raw = await _transcribe(filePath);
+      final processingMs = transcribeWatch.elapsedMilliseconds;
       // 各家 provider 的路徑都收斂在這裡，短句去句號只做這一次
       final result = raw == null
           ? null
@@ -537,6 +540,17 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       );
       await historyRepo.addRecord(record);
       await historyRepo.accumulateStats(record);
+      // 效能分頁：開關關著時 add 直接略過
+      ref.read(perfControllerProvider.notifier).add(PerfEntry(
+            at: record.createdAt,
+            provider: record.provider,
+            model: record.model,
+            processingMs: processingMs,
+            audioMs: durationMs,
+            inputTokens: result.inputTokens,
+            outputTokens: result.outputTokens,
+            chars: result.text.length,
+          ));
       // 歷史頁若正開著,不刷新就看不到剛剛這筆(切換分頁時才會重讀)
       ref.invalidate(historyControllerProvider);
       ref.invalidate(historyStatsProvider);
@@ -561,8 +575,9 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
         unawaited(soundService.playFailedSound());
       }
 
-      // 模型不只一個可選，紀錄要看得出這句是哪個模型辨識的
-      _log.info('[${modelShortName(config.modelId ?? '')}] ${result.text}');
+      // 辨識文字歷史分頁已經有了，平常不再重複印在紀錄分頁；偵錯模式才記，
+      // 跟上面的「貼上：目標視窗」對得起來。模型不只一個可選，要看得出是哪個模型辨識的。
+      _log.debug('[${modelShortName(config.modelId ?? '')}] ${result.text}');
       state = const ZeroTypeState();
       await _hideNativeOverlay();
     } catch (e, st) {
