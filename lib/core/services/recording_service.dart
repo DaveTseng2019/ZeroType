@@ -505,6 +505,13 @@ class RecordingService {
     }
   }
 
+  /// 還在進行中的 [startRecording]。
+  ///
+  /// [stopRecording] 與 [cancelRecording] 要先等它跑完：啟動途中（還在等暫存
+  /// 資料夾、列裝置）收音串流還沒打開，那時去停什麼都停不到，等啟動跑完
+  /// 串流照樣打開，麥克風就一直開著（見 test/recording_start_race_test.dart）。
+  Future<void>? _starting;
+
   Future<void> startRecording({
     AmplitudeCallback? onAmplitude,
     String? deviceId,
@@ -517,6 +524,42 @@ class RecordingService {
     /// 實際切掉的是它加上 [kBeepOnsetDelayMs]。
     /// 傳 [Duration.zero]（音效關閉時）就完全不切。
     Duration startSoundDuration = Duration.zero,
+  }) {
+    final starting = _startRecording(
+      onAmplitude: onAmplitude,
+      deviceId: deviceId,
+      noiseGateStrength: noiseGateStrength,
+      warmupTimeout: warmupTimeout,
+      onCaptureStart: onCaptureStart,
+      startSoundDuration: startSoundDuration,
+    );
+    _starting = starting;
+    return starting;
+  }
+
+  /// 等進行中的 [startRecording] 跑完（成功或失敗都算），再讓呼叫端去停。
+  ///
+  /// notes: 最多等 8 秒，跟 _recorder.stop() 的逾時一致。啟動真的卡超過 8 秒
+  ///   的話，之後才打開的串流仍然沒人關；要根治得讓 _startRecording 自己在
+  ///   打開串流後檢查「是否已被要求停止」。目前沒有看過啟動卡這麼久。
+  Future<void> _awaitPendingStart() async {
+    final starting = _starting;
+    _starting = null;
+    if (starting == null) return;
+    try {
+      await starting.timeout(const Duration(seconds: 8));
+    } catch (_) {
+      // 啟動失敗或逾時：沒有串流可停，交給呼叫端照常收尾
+    }
+  }
+
+  Future<void> _startRecording({
+    AmplitudeCallback? onAmplitude,
+    String? deviceId,
+    required double noiseGateStrength,
+    required Duration warmupTimeout,
+    void Function()? onCaptureStart,
+    required Duration startSoundDuration,
   }) async {
     final dir = await getTemporaryDirectory();
     // The sandbox cache dir may not exist when app-sandbox is disabled in debug.
@@ -627,6 +670,7 @@ class RecordingService {
   }
 
   Future<String?> stopRecording() async {
+    await _awaitPendingStart();
     await _streamSubscription?.cancel();
     _streamSubscription = null;
 
@@ -694,6 +738,7 @@ class RecordingService {
   }
 
   Future<void> cancelRecording() async {
+    await _awaitPendingStart();
     await _streamSubscription?.cancel();
     _streamSubscription = null;
     _pcm = null;

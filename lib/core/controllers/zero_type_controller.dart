@@ -27,7 +27,20 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
   /// notes: 訊息寫進紀錄頁，不再用「overlay 顯示 2~3 秒」當 UI —— 那種延遲會把
   /// 流程整個卡住（錯誤要等 3 秒才回到閒置，期間熱鍵沒有反應），訊息也留不下來。
   LogController get _log => ref.read(logControllerProvider.notifier);
-  bool _cancelled = false;
+
+  /// 錄音輪次編號。每次開始錄音與每次取消都會加一。
+  ///
+  /// 每個非同步流程在開頭記下自己的編號，每次 await 回來先比對：編號不同，
+  /// 代表這一輪已經被取消、或已經有新的一輪接手，這時不准再碰 state、
+  /// 不准貼上，只清掉自己的暫存檔。
+  ///
+  /// notes: 取代原本的 `_cancelled` 旗標。旗標會被下一輪 `_startRecording`
+  ///   設回 false，於是辨識中按 Esc 取消後，結果照樣貼上；取消後馬上錄下一段，
+  ///   舊流程還會把新錄音改成 idle（見 test/cancel_during_transcribe_test.dart）。
+  int _session = 0;
+
+  bool _stale(int session) => !ref.mounted || session != _session;
+
   DateTime? _recordingStartTime;
   Timer? _maxDurationTimer;
 
@@ -92,7 +105,7 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
   Future<void> cancel() async {
     _maxDurationTimer?.cancel();
     _maxDurationTimer = null;
-    _cancelled = true;
+    _session++; // 讓進行中的流程（啟動中、辨識中、貼上中）全部作廢
     if (state.status == ZeroTypeStatus.recording ||
         state.status == ZeroTypeStatus.warmingUp) {
       state = state.copyWith(status: ZeroTypeStatus.cancelling);
@@ -106,7 +119,7 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
   }
 
   Future<void> _startRecording({bool quick = false}) async {
-    _cancelled = false;
+    final session = ++_session;
     _quickMode = quick;
     _quietGate = quick ? QuietGate() : null;
 
@@ -118,6 +131,7 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
     } catch (_) {} // macOS 端沒有這個方法，忽略
 
     final config = await ref.read(speechProviderControllerProvider.future);
+    if (_stale(session)) return;
     if (config.providerId == null || config.providerId!.isEmpty ||
         (_needsApiKey(config.providerId) &&
             (config.apiKey == null || config.apiKey!.isEmpty)) ||
@@ -145,7 +159,7 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       hasPermission = results[1] as bool;
     } catch (_) {}
 
-    if (!ref.mounted || _cancelled) return;
+    if (_stale(session)) return;
     if (!isAccessibilityOk) {
       _log.error('請先授權輔助使用權限');
       await soundService.playCancelSound();
@@ -173,7 +187,7 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
     // 聲音，也才不會被藍牙切 HFP 的那一下吃掉。
     unawaited(soundService.pauseMusic());
 
-    if (!ref.mounted || _cancelled) return;
+    if (_stale(session)) return;
     // 等待麥克風就緒時先進 warmingUp：圖示、提示都還不能說「錄音中」，
     // 因為這段收到的音訊會被 MicReadyGate 丟掉，使用者這時講話是白講。
     final warming = warmupTimeout > Duration.zero;
@@ -183,9 +197,9 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       amplitude: 0.0,
     );
     if (warming) {
-      _armMaxDuration();
+      _armMaxDuration(session);
     } else {
-      _beginRecording();
+      _beginRecording(session);
     }
 
     // [優化3] overlay 顯示與錄音初始化同步進行
@@ -204,16 +218,16 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
           // 不分裝置一律切 —— 用耳機時開頭本來就沒有人聲，切掉沒有損失。
           startSoundDuration: soundService.startSoundAudibleDuration,
           onCaptureStart: () {
-            if (!ref.mounted || _cancelled) return;
+            if (_stale(session)) return;
             unawaited(soundService.playStartSound());
             if (state.status != ZeroTypeStatus.warmingUp) return;
             state = state.copyWith(status: ZeroTypeStatus.recording);
-            _beginRecording();
+            _beginRecording(session);
             unawaited(
                 _showNativeOverlay('recording', '錄音中${_modeLabel(quick)}'));
           },
           onAmplitude: (amp) {
-            if (!ref.mounted || _cancelled) return;
+            if (_stale(session)) return;
             state = state.copyWith(amplitude: amp);
             _updateNativeAmplitude(amp);
             // 精簡模式：講完就自動送出，不必再按一次熱鍵。
@@ -230,7 +244,7 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       ]);
     } catch (e, st) {
       print('[ZeroType] startRecording failed: $e\n$st');
-      if (!ref.mounted || _cancelled) return;
+      if (_stale(session)) return;
       _log.error('錄音啟動失敗：$e');
       state = const ZeroTypeState();
       await _hideNativeOverlay();
@@ -239,18 +253,19 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
 
   /// 真的開始收音的那一刻：計時基準與逾時保險絲都從這裡重算，
   /// 等待麥克風就緒的那幾秒不該被算進錄音長度。
-  void _beginRecording() {
+  void _beginRecording(int session) {
     _recordingStartTime = DateTime.now();
-    _armMaxDuration();
+    _armMaxDuration(session);
   }
 
   /// Max-duration safety timer from user setting (default 1 min, max 5 min)。
   /// warmingUp 也要蓋到 —— 麥克風若一直沒送出訊號（被靜音、被別的程式佔住），
   /// 等待是不會自己結束的，總不能讓麥克風就這樣一直開著。
-  void _armMaxDuration() {
+  void _armMaxDuration(int session) {
     _maxDurationTimer?.cancel();
     final maxMinutes = appPrefs.getInt(AppConstants.maxRecordingMinutesKey) ?? 1;
     _maxDurationTimer = Timer(Duration(minutes: maxMinutes), () {
+      if (_stale(session)) return;
       switch (state.status) {
         case ZeroTypeStatus.recording:
           print('[ZeroType] Max recording duration reached, auto-stopping.');
@@ -455,6 +470,10 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
   double? _sumCost(double? a, double? b) => a == null ? b : a + (b ?? 0);
 
   Future<void> _stopAndProcess() async {
+    // 這一輪的編號與模式先記下來：之後每次 await 回來，_session、_quickMode
+    // 都可能已經屬於下一輪。
+    final session = _session;
+    final quickMode = _quickMode;
     _maxDurationTimer?.cancel();
     _maxDurationTimer = null;
     state = state.copyWith(status: ZeroTypeStatus.saving);
@@ -465,18 +484,27 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
         ? stopTime.difference(_recordingStartTime!).inMilliseconds
         : null;
 
+    String? filePath;
+    // 這一輪被取消或被下一輪取代時，只清掉自己的暫存音檔就離開。
+    // state 與畫面交給 cancel() 或下一輪處理，這裡一律不碰。
+    Future<void> discard() async {
+      final f = filePath;
+      if (f != null) await _recordingService.deleteFile(f);
+    }
+
     try {
+      // 不管這一輪是不是已經作廢，都要先停掉錄音 —— 在 saving 之後取消時，
+      // cancel() 不會關麥克風，只能靠這一步。
+      filePath = await _recordingService.stopRecording();
+      if (_stale(session)) {
+        await discard();
+        return;
+      }
       // notes: 這裡播的是「麥克風真的關了」，跟下面送出貼上前那聲「文字準備好了」
       // 是兩個不同的提示音——中間還有辨識要跑好幾秒，用同一聲會讓人誤以為已經好了。
-      final filePath = await _recordingService.stopRecording();
       unawaited(soundService.playRecordingStoppedSound());
       soundService.resumeMusic();
 
-      if (!ref.mounted || _cancelled) {
-        state = const ZeroTypeState();
-        await _hideNativeOverlay();
-        return;
-      }
       if (filePath == null) {
         // 沒訊號、只有底噪，或麥克風根本沒送出資料。要講出來，不然使用者
         // 只會看到什麼都沒發生，還以為熱鍵壞了；也要講是哪一種，才查得下去。
@@ -486,14 +514,20 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
         await _hideNativeOverlay();
         return;
       }
+      final audioPath = filePath;
 
       state = state.copyWith(status: ZeroTypeStatus.transcribing);
       await _showNativeOverlay('transcribing', '辨識中');
 
       final config = await ref.read(speechProviderControllerProvider.future);
       final transcribeWatch = Stopwatch()..start();
-      final raw = await _transcribe(filePath);
+      final raw = await _transcribe(audioPath);
       final processingMs = transcribeWatch.elapsedMilliseconds;
+      // 辨識要好幾秒，這段期間最常被取消。取消了就不存歷史、不貼上。
+      if (_stale(session)) {
+        await discard();
+        return;
+      }
       // 各家 provider 的路徑都收斂在這裡，短句去句號只做這一次
       final result = raw == null
           ? null
@@ -509,13 +543,13 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
 
       if (result == null || result.text.isEmpty) {
         // Cleanup temp file on empty result
-        await _recordingService.deleteFile(filePath);
+        await _recordingService.deleteFile(audioPath);
         throw Exception('未能辨識出任何文字');
       }
 
       // Move audio to history dir and save record
       final historyRepo = historyRepository;
-      final audioHistoryPath = await historyRepo.moveAudioFile(filePath);
+      final audioHistoryPath = await historyRepo.moveAudioFile(audioPath);
 
       final recordId = DateTime.now().millisecondsSinceEpoch.toString();
       final record = TranscriptionRecord(
@@ -555,6 +589,10 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       ref.invalidate(historyControllerProvider);
       ref.invalidate(historyStatsProvider);
 
+      // 存歷史的那幾次 await 之間也可能被取消；歷史留著（文字還找得回來），
+      // 但不貼上，也不碰已經交給下一輪的 state。
+      if (_stale(session)) return;
+
       // Output
       state = state.copyWith(status: ZeroTypeStatus.done, result: result.text);
       // notes: 提示音在送出貼上前響，不 await —— 播放本身不該卡住流程
@@ -564,7 +602,7 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       // notes: VS 內建終端機收不到注入的按鍵，精簡模式在那裡不會自動送出 —— 那個
       // 控制項的 wndproc 對鍵盤訊息一律不理。曾試過把換行併進剪貼簿讓貼上自帶
       // Enter，可行但使用者不要，別再加回來。
-      final autoEnter = _quickMode &&
+      final autoEnter = quickMode &&
           (appPrefs.getBool(AppConstants.quickAutoEnterKey) ?? true);
       final outcome = await pasteText(result.text, pressEnter: autoEnter);
       _log.debug('貼上：${outcome.target}');
@@ -578,11 +616,18 @@ class ZeroTypeController extends Notifier<ZeroTypeState> {
       // 辨識文字歷史分頁已經有了，平常不再重複印在紀錄分頁；偵錯模式才記，
       // 跟上面的「貼上：目標視窗」對得起來。模型不只一個可選，要看得出是哪個模型辨識的。
       _log.debug('[${modelShortName(config.modelId ?? '')}] ${result.text}');
+      // 貼上期間按了熱鍵（cancel）或已經開始下一輪，state 不是這一輪的了
+      if (_stale(session)) return;
       state = const ZeroTypeState();
       await _hideNativeOverlay();
     } catch (e, st) {
       print('[ZeroType] ERROR in _stopAndProcess: $e\n$st');
-      if (!ref.mounted || _cancelled) return;
+      if (_stale(session)) {
+        try {
+          await discard();
+        } catch (_) {}
+        return;
+      }
       _log.error('處理失敗：$e');
       // 辨識／API 失敗（API Key 錯誤、額度、斷網）畫面上只有紀錄頁看得到，
       // 沒有聲音使用者會一直等一段永遠不會出現的文字
