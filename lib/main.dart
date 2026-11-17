@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:launch_at_startup/launch_at_startup.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:screen_retriever/screen_retriever.dart';
 import 'package:window_manager/window_manager.dart';
 
@@ -18,6 +19,7 @@ import 'core/services/app_lifecycle.dart';
 import 'core/state/zero_type_state.dart';
 import 'core/theme/app_theme.dart';
 import 'core/services/hotkey_service.dart';
+import 'core/services/local_stt_control.dart';
 import 'core/theme/theme_controller.dart';
 import 'features/log/log_controller.dart';
 import 'features/phrases/phrase_picker.dart';
@@ -36,7 +38,24 @@ void main() async {
   await configureDependencies();
   await _initLaunchAtStartup();
   _startLocalSttIfNeeded();
+  unawaited(_startLocalSttControl());
   runApp(const ProviderScope(child: ZeroTypeApp()));
+}
+
+/// 讓 AI 代理用請求檔停止、啟動、重啟本機端點，協定見 [LocalSttControl]。
+///
+/// notes: 不管目前選的是不是本機服務商都開著。它只在有人寫請求檔時才動作，
+///        平常的成本是一個資料夾監看加每 5 秒一次的檔案存在檢查。
+Future<void> _startLocalSttControl() async {
+  try {
+    final support = await getApplicationSupportDirectory();
+    await LocalSttControl(
+      dir: Directory('${support.path}${Platform.pathSeparator}control'),
+      execute: (command) => runLocalSttCommand(localSttService, command),
+    ).start();
+  } catch (e) {
+    print('[LocalSttControl] 無法啟動監看：$e');
+  }
 }
 
 /// 選了本機服務商、而且開關是開的，就把本機辨識端點一起拉起來。
