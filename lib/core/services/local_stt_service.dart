@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ffi';
 import 'dart:io';
 
@@ -7,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:win32/win32.dart';
 
 import '../constants/app_constants.dart';
+import 'local_stt_alert.dart';
+import 'local_stt_diagnosis.dart';
 import 'speech_recognition_service.dart';
 
 /// LocalSTT 資料夾裡的檔名約定。
@@ -66,9 +69,13 @@ final _argPattern = RegExp(r'"([^"]*)"|(\S+)');
 
 /// 管理本機辨識端點的生命週期：選了本機服務商就拉起來，離開 app 就關掉。
 class LocalSttService {
-  LocalSttService({required Dio dio, required SharedPreferences prefs})
-      : _dio = dio,
-        _prefs = prefs {
+  LocalSttService({
+    required Dio dio,
+    required SharedPreferences prefs,
+    LocalSttAlert? alert,
+  })  : _dio = dio,
+        _prefs = prefs,
+        _alert = alert ?? Win32LocalSttAlert() {
     _dropRemovedLocalModel();
     _migrateLegacyLaunchSettings();
   }
@@ -87,6 +94,10 @@ class LocalSttService {
 
   final Dio _dio;
   final SharedPreferences _prefs;
+  final LocalSttAlert _alert;
+
+  /// 這次 App 執行期間，是否已經提供過一次「自動修正保留埠」。
+  bool _autoFixTried = false;
 
   /// 只有「我們自己啟動的」才記在這裡。外部啟動的端點不歸我們管，也不該被我們殺掉。
   int? _pid;
@@ -279,6 +290,7 @@ class LocalSttService {
 
     final showConsole =
         _prefs.getBool(AppConstants.localSttShowConsoleKey) ?? false;
+    final launchedAt = DateTime.now();
     final pid = _createProcess(
       program,
       arguments,
@@ -289,6 +301,70 @@ class LocalSttService {
     _pid = pid;
     _startedAt = DateTime.now();
     print('[LocalSTT] 已啟動端點 pid $pid，等待模型載入');
+    unawaited(_watchStartup(pid, launchedAt));
+  }
+
+  /// 啟動後最多盯 180 秒：端點起不來而且記錄裡看得出原因，就跳提示視窗。
+  ///
+  /// notes: 記錄檔每次啟動清空，所以讀到的一定是這一次的結果。
+  /// notes: 180 秒到了仍沒結果就不提示——模型可能只是載得慢。
+  /// notes: python 啟動通常超過 1 秒才清空記錄檔。檔案修改時間早於 launchedAt 減 1 秒，
+  ///        代表還是上一次的記錄，這一輪跳過診斷，免得拿舊的綁埠錯誤誤報。
+  Future<void> _watchStartup(int pid, DateTime launchedAt) async {
+    final notBefore = launchedAt.subtract(const Duration(seconds: 1));
+    for (var i = 0; i < 180; i++) {
+      await Future<void>.delayed(const Duration(seconds: 1));
+      if (_pid != pid) return;
+      if (await isHealthy()) return;
+      if (!_logIsFresh(notBefore)) continue;
+      final failure = diagnoseLocalSttLog(readLog(lines: 200));
+      if (failure != null && await health() == null) {
+        if (_pid != pid) return;
+        await _onStartupFailure(failure);
+        return;
+      }
+    }
+  }
+
+  /// 記錄檔存在，而且修改時間不早於 [notBefore]。
+  bool _logIsFresh(DateTime notBefore) {
+    final path = logPath;
+    if (path.isEmpty) return false;
+    try {
+      final file = File(path);
+      return file.existsSync() && !file.lastModifiedSync().isBefore(notBefore);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _onStartupFailure(LocalSttFailure failure) async {
+    print('[LocalSTT] 啟動失敗：${failure.kind.name} port=${failure.port}');
+    final port = failure.port;
+    try {
+      switch (failure.kind) {
+        case LocalSttFailureKind.portReserved:
+          if (port == null) return;
+          if (_autoFixTried) {
+            await _alert.showReservedPortManual(port);
+            return;
+          }
+          _autoFixTried = true;
+          if (!await _alert.askFixReservedPort(port)) return;
+          if (await _alert.reservePort(port)) {
+            _startedAt = null;
+            await ensureRunning();
+          } else {
+            await _alert.showFixFailed(port);
+          }
+        case LocalSttFailureKind.portInUse:
+          if (port != null) await _alert.showPortInUse(port);
+        case LocalSttFailureKind.crashed:
+          await _alert.showCrashed(failure.tail, logPath);
+      }
+    } catch (e) {
+      print('[LocalSTT] 顯示啟動失敗提示時出錯：$e');
+    }
   }
 
   /// 自己呼叫 CreateProcess，因為主控台視窗只在建立行程那一刻決定得了。
